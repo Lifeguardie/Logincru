@@ -257,6 +257,31 @@ npm --prefix client test      # לקוח: תור השמירה
 
 ---
 
+## פריסה על שרת (IP ופורט)
+
+סקריפט אחד מתקין ומעדכן. הוא מבודד לחלוטין: מסד נתונים נפרד (`resto_inventory`) עם משתמש
+שיש לו הרשאות רק עליו, תיקייה נפרדת (`~/resto-inventory`), פורט נפרד (4010) ותהליך PM2 נפרד.
+הוא לא נוגע ב-nginx ולא בשום מערכת אחרת על השרת.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Lifeguardie/Logincru/claude/restaurant-inventory-system-e8ptqa/inventory/deploy/install.sh | bash
+```
+
+מה הוא עושה: בודק Node 20+ ו-MariaDB (מתקין MariaDB אם חסר), מוריד את הקוד, יוצר מסד
+ומשתמש עם סיסמה אקראית, כותב `.env` עם `JWT_SECRET` אקראי, בונה את הממשק, מריץ מיגרציות,
+יוצר את משתמש המנהל, מפעיל ב-PM2, מוסיף גיבוי יומי ב-cron, ובודק שהשרת עונה.
+בסוף הוא מדפיס את הכתובת להזנה בטלפון.
+
+- **עדכון גרסה:** אותה פקודה שוב. קובץ `.env` והמסד נשמרים.
+- **ב-AWS:** לפתוח TCP 4010 ב-Security Group (Inbound).
+- **אפשרויות:** `PORT=4020`, `APP_DIR=/opt/inventory`, `DEMO=1` (פריטי דוגמה),
+  `DB_ROOT_PASSWORD=...` אם root של MariaDB דורש סיסמה.
+- **הסרה מלאה:** `bash ~/resto-inventory/repo/inventory/deploy/uninstall.sh` (שומר גיבוי אחרון ב-`$HOME`).
+- **הפעלה אוטומטית אחרי אתחול:** אם PM2 הותקן עכשיו, פעם אחת `pm2 startup` ואז הפקודה שהוא מדפיס.
+
+בשלב הזה התעבורה היא HTTP על IP. כשיהיה דומיין: nginx עם Let's Encrypt מול הפורט,
+`TRUST_PROXY=1` ב-`.env`, ובאפליקציית Android להסיר `usesCleartextTraffic`.
+
 ## תפעול
 
 - **לוגים:** `logs/inventory.log`, ובפרודקשן גם `pm2 logs inventory`
