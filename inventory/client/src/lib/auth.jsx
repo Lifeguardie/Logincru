@@ -38,6 +38,11 @@ export function AuthProvider({ children }) {
       flush();
       return data.user;
     },
+    /** אחרי החלפת סיסמה השרת מחזיר טוקן חדש בלי דגל החובה */
+    applySession(token, nextUser) {
+      setSession(token, nextUser);
+      setUser(nextUser);
+    },
     logout() {
       clearSession();
       clearQueue();

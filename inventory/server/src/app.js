@@ -13,11 +13,22 @@ const countsRoutes = require('./routes/counts');
 const purchasesRoutes = require('./routes/purchases');
 const importsRoutes = require('./routes/imports');
 const reportsRoutes = require('./routes/reports');
+const usersRoutes = require('./routes/users');
 
 const app = express();
 
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
+
+// כותרות אבטחה בסיסיות. בלי helmet - ארבע כותרות לא מצדיקות תלות.
+app.use((req, res, next) => {
+  res.set('X-Content-Type-Options', 'nosniff');
+  res.set('X-Frame-Options', 'DENY');
+  res.set('Referrer-Policy', 'no-referrer');
+  // תשובות API לעולם לא נשמרות במטמון - נתוני מלאי ישנים גרועים מאין נתונים
+  if (req.path.startsWith('/api')) res.set('Cache-Control', 'no-store');
+  next();
+});
 
 app.use(express.json({ limit: '2mb' }));
 
@@ -46,6 +57,7 @@ app.use('/api/counts', countsRoutes);
 app.use('/api/purchases', purchasesRoutes);
 app.use('/api/imports', importsRoutes);
 app.use('/api/reports', reportsRoutes);
+app.use('/api/users', usersRoutes);
 
 app.use('/api', notFound);
 

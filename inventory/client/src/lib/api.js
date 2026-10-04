@@ -77,6 +77,13 @@ async function request(method, path, { body, formData, raw } = {}) {
   if (!response.ok) {
     let payload = {};
     try { payload = await response.json(); } catch (_) { /* גוף לא JSON */ }
+
+    // השרת חוסם הכל עד להחלפת סיסמה - שולחים לשם
+    if (response.status === 403 && payload.code === 'PASSWORD_CHANGE_REQUIRED'
+        && window.location.pathname !== '/password') {
+      window.location.href = '/password';
+    }
+
     throw new ApiError(response.status, payload.error || `שגיאה ${response.status}`, payload.details);
   }
 
@@ -116,6 +123,12 @@ async function download(path, fallbackName) {
 export const api = {
   login: (username, password) => post('/auth/login', { username, password }),
   me: () => get('/auth/me'),
+  changePassword: (currentPassword, newPassword) => put('/auth/password', { currentPassword, newPassword }),
+
+  listUsers: () => get('/users'),
+  createUser: (body) => post('/users', body),
+  updateUser: (id, body) => put(`/users/${id}`, body),
+  resetUserPassword: (id, newPassword) => post(`/users/${id}/reset-password`, { newPassword }),
 
   listCategories: () => get('/categories'),
   createCategory: (body) => post('/categories', body),

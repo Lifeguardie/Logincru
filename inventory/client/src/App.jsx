@@ -11,6 +11,8 @@ import ItemEditor from './pages/ItemEditor';
 import ImportItems from './pages/ImportItems';
 import Purchases from './pages/Purchases';
 import Reports from './pages/Reports';
+import ChangePassword from './pages/ChangePassword';
+import Users from './pages/Users';
 
 /** חוסם מסכים למי שלא מחובר, ומסכי ניהול למי שאין לו תפקיד מתאים */
 function Protected({ children, minimumRole }) {
@@ -19,6 +21,9 @@ function Protected({ children, minimumRole }) {
 
   if (checking) return <div className="spinner">טוען…</div>;
   if (!user) return <Navigate to="/login" state={{ from: location }} replace />;
+  if (user.mustChangePassword && location.pathname !== '/password') {
+    return <Navigate to="/password" replace />;
+  }
   if (minimumRole && !can(minimumRole)) {
     return <div className="alert error">אין לך הרשאה לצפות במסך הזה</div>;
   }
@@ -34,7 +39,9 @@ function Shell({ children }) {
       <header className="topbar">
         <h1>ספירת מלאי</h1>
         <div className="spacer" />
-        <span className="user">{user.fullName}</span>
+        <NavLink to="/password" className="user" style={{ color: '#fff', textDecoration: 'none' }} title="החלפת סיסמה">
+          {user.fullName}
+        </NavLink>
         <button className="ghost small" style={{ color: '#fff', borderColor: 'rgba(255,255,255,.5)' }} onClick={logout}>
           יציאה
         </button>
@@ -45,6 +52,7 @@ function Shell({ children }) {
         <NavLink to="/items">פריטים</NavLink>
         {can('manager') && <NavLink to="/purchases">רכש</NavLink>}
         {can('manager') && <NavLink to="/reports">דוחות</NavLink>}
+        {can('admin') && <NavLink to="/users">משתמשים</NavLink>}
       </nav>
 
       <main className="content">{children}</main>
@@ -71,6 +79,8 @@ export default function App() {
               <Route path="/items/import" element={<Protected minimumRole="manager"><ImportItems /></Protected>} />
               <Route path="/purchases" element={<Protected minimumRole="manager"><Purchases /></Protected>} />
               <Route path="/reports" element={<Protected minimumRole="manager"><Reports /></Protected>} />
+              <Route path="/password" element={<ChangePassword />} />
+              <Route path="/users" element={<Protected minimumRole="admin"><Users /></Protected>} />
               <Route path="*" element={<div className="empty">הדף לא נמצא</div>} />
             </Routes>
           </Shell>

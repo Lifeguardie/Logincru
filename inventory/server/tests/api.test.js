@@ -62,7 +62,11 @@ test.before(async () => {
   server = app.listen(0);
   base = `http://127.0.0.1:${server.address().port}`;
 
-  admin = (await call('POST', '/auth/login', { body: { username: 'admin', password: 'admin1234' } })).body.token;
+  // ה-admin מהזריעה חייב להחליף סיסמה לפני כל דבר אחר
+  const firstLogin = (await call('POST', '/auth/login', { body: { username: 'admin', password: 'admin1234' } })).body;
+  admin = (await call('PUT', '/auth/password', {
+    token: firstLogin.token, body: { currentPassword: 'admin1234', newPassword: 'Admin-Test-2026' },
+  })).body.token;
 
   // משתמש counter לבדיקת הרשאות
   const bcrypt = require('bcryptjs');

@@ -99,11 +99,12 @@ async function runSeed({ demo = false, log = console.log } = {}) {
   } else {
     const hash = await bcrypt.hash(adminPassword, 10);
     await db.query(
-      'INSERT INTO users (username, password_hash, full_name, role) VALUES (?, ?, ?, ?)',
+      `INSERT INTO users (username, password_hash, full_name, role, must_change_password)
+       VALUES (?, ?, ?, ?, 1)`,
       [adminUsername, hash, 'מנהל מערכת', 'admin']
     );
     log(`נוצר משתמש מנהל: ${adminUsername} / ${adminPassword}`);
-    log('>>> יש להחליף את הסיסמה מיד אחרי ההתחברות הראשונה <<<');
+    log('המערכת תדרוש להחליף את הסיסמה בהתחברות הראשונה.');
   }
 
   if (!withDemo) {
