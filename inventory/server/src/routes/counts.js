@@ -373,6 +373,26 @@ router.post('/:id/close', requireRole('manager'), asyncRoute(async (req, res) =>
   res.json({ id: countId, status: 'closed', totalValue });
 }));
 
+/**
+ * מוחק ספירה *פתוחה* בלבד - נפתחה בטעות, או עם תאריך שגוי.
+ * ספירה סגורה היא היסטוריה ולא נמחקת; אם צריך לתקן אותה, פותחים מחדש.
+ */
+router.delete('/:id', requireRole('manager'), asyncRoute(async (req, res) => {
+  const countId = z.coerce.number().int().positive().parse(req.params.id);
+
+  const count = await db.queryOne('SELECT id, name, status FROM counts WHERE id = ?', [countId]);
+  if (!count) throw new HttpError(404, 'הספירה לא נמצאה');
+  if (count.status === 'closed') {
+    throw new HttpError(409, 'ספירה סגורה לא נמחקת. אפשר לפתוח אותה מחדש ולתקן');
+  }
+
+  // count_lines נמחקות בקסקדה
+  await db.query('DELETE FROM counts WHERE id = ? AND status = \'open\'', [countId]);
+
+  logger.warn('ספירה פתוחה נמחקה', { countId, name: count.name, by: req.user.username });
+  res.status(204).end();
+}));
+
 /** פותח מחדש ספירה סגורה - למקרה שהתגלתה טעות אחרי הסגירה */
 router.post('/:id/reopen', requireRole('manager'), asyncRoute(async (req, res) => {
   const countId = z.coerce.number().int().positive().parse(req.params.id);

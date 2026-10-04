@@ -63,12 +63,31 @@ export default function Dashboard() {
   }
 
   async function closeCount() {
-    if (!window.confirm('לסגור את הספירה? אחרי הסגירה לא ניתן להזין עוד כמויות.')) return;
+    const counted = progress.reduce((sum, row) => sum + row.countedItems, 0);
+    const total = progress.reduce((sum, row) => sum + row.totalItems, 0);
+    const missing = total - counted;
+
+    const warning = missing > 0
+      ? `נספרו ${counted} מתוך ${total} פריטים - ${missing} פריטים עדיין לא נספרו.\n\n`
+      : `נספרו כל ${total} הפריטים.\n\n`;
+
+    if (!window.confirm(`${warning}לסגור את הספירה? אחרי הסגירה לא ניתן להזין עוד כמויות.`)) return;
 
     try {
       await api.closeCount(activeCount.id);
       await load();
       navigate(`/counts/${activeCount.id}/summary`);
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function deleteCount() {
+    if (!window.confirm(`למחוק את הספירה "${activeCount.name}"? כל הכמויות שהוזנו בה יימחקו. אי אפשר לבטל.`)) return;
+
+    try {
+      await api.deleteCount(activeCount.id);
+      await load();
     } catch (err) {
       setError(err.message);
     }
@@ -111,6 +130,7 @@ export default function Dashboard() {
               <div className="row" style={{ marginTop: 12 }}>
                 <Link to={`/counts/${activeCount.id}/summary`}><button className="secondary">סיכום</button></Link>
                 <button className="danger" onClick={closeCount}>סגירת ספירה</button>
+                <button className="ghost" onClick={deleteCount} title="מחיקת ספירה שנפתחה בטעות">מחיקה</button>
               </div>
             )}
           </div>

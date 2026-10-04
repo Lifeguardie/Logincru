@@ -11,7 +11,6 @@
 const bcrypt = require('bcryptjs');
 const db = require('../src/db');
 
-const withDemo = process.argv.includes('--demo');
 
 const LOCATIONS = ['מטבח', 'בר', 'מחסן יבש', 'מקרר', 'מקפיא'];
 const CATEGORIES = ['ירקות ופירות', 'בשר ועוף', 'דגים', 'חלב וביצים', 'יבשים', 'אלכוהול', 'שתייה קלה', 'ניקיון וחד פעמי'];
@@ -76,18 +75,19 @@ async function upsertByName(table, name, sortOrder) {
   return result.insertId;
 }
 
-async function main() {
+async function runSeed({ demo = false, log = console.log } = {}) {
+  const withDemo = demo;
   const locationIds = new Map();
   for (const [index, name] of LOCATIONS.entries()) {
     locationIds.set(name, await upsertByName('locations', name, index));
   }
-  console.log(`אזורי ספירה: ${LOCATIONS.length}`);
+  log(`אזורי ספירה: ${LOCATIONS.length}`);
 
   const categoryIds = new Map();
   for (const [index, name] of CATEGORIES.entries()) {
     categoryIds.set(name, await upsertByName('categories', name, index));
   }
-  console.log(`מחלקות: ${CATEGORIES.length}`);
+  log(`מחלקות: ${CATEGORIES.length}`);
 
   const adminUsername = process.env.SEED_ADMIN_USER || 'admin';
   const adminPassword = process.env.SEED_ADMIN_PASSWORD || 'admin1234';
@@ -95,26 +95,26 @@ async function main() {
   const existingAdmin = await db.queryOne('SELECT id FROM users WHERE username = ?', [adminUsername]);
 
   if (existingAdmin) {
-    console.log(`משתמש "${adminUsername}" כבר קיים - לא נוגעים בסיסמה`);
+    log(`משתמש "${adminUsername}" כבר קיים - לא נוגעים בסיסמה`);
   } else {
     const hash = await bcrypt.hash(adminPassword, 10);
     await db.query(
       'INSERT INTO users (username, password_hash, full_name, role) VALUES (?, ?, ?, ?)',
       [adminUsername, hash, 'מנהל מערכת', 'admin']
     );
-    console.log(`נוצר משתמש מנהל: ${adminUsername} / ${adminPassword}`);
-    console.log('>>> יש להחליף את הסיסמה מיד אחרי ההתחברות הראשונה <<<');
+    log(`נוצר משתמש מנהל: ${adminUsername} / ${adminPassword}`);
+    log('>>> יש להחליף את הסיסמה מיד אחרי ההתחברות הראשונה <<<');
   }
 
   if (!withDemo) {
-    console.log('\nהושלם. להוספת פריטי דוגמה: npm run seed -- --demo');
+    log('\nהושלם. להוספת פריטי דוגמה: npm run seed -- --demo');
     return;
   }
 
   for (const demo of DEMO_ITEMS) {
     const existing = await db.queryOne('SELECT id FROM items WHERE sku = ?', [demo.sku]);
     if (existing) {
-      console.log(`דילוג (קיים): ${demo.name}`);
+      log(`דילוג (קיים): ${demo.name}`);
       continue;
     }
 
@@ -140,16 +140,20 @@ async function main() {
       );
     }
 
-    console.log(`נוצר: ${demo.name} (${demo.units.length} יחידות ספירה)`);
+    log(`נוצר: ${demo.name} (${demo.units.length} יחידות ספירה)`);
   }
 
-  console.log('\nהושלם.');
+  log('\nהושלם.');
 }
 
-main()
-  .then(() => db.pool.end())
-  .catch(async (err) => {
-    console.error('ה-seed נכשל:', err.message);
-    await db.pool.end();
-    process.exit(1);
-  });
+module.exports = { runSeed };
+
+if (require.main === module) {
+  runSeed({ demo: process.argv.includes('--demo') })
+    .then(() => db.pool.end())
+    .catch(async (err) => {
+      console.error('ה-seed נכשל:', err.message);
+      await db.pool.end();
+      process.exit(1);
+    });
+}

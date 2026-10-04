@@ -70,7 +70,8 @@ router.get('/', asyncRoute(async (req, res) => {
     q: z.string().trim().optional(),
     categoryId: z.coerce.number().int().positive().optional(),
     locationId: z.coerce.number().int().positive().optional(),
-    includeInactive: z.coerce.boolean().default(false),
+    // z.coerce.boolean() היה הופך את המחרוזת "false" ל-true. מפרשים במפורש.
+    includeInactive: z.enum(['true', 'false']).default('false').transform((v) => v === 'true'),
     limit: z.coerce.number().int().min(1).max(500).default(200),
     offset: z.coerce.number().int().min(0).default(0),
   }).parse(req.query);
@@ -155,16 +156,40 @@ router.get('/:id', asyncRoute(async (req, res) => {
 }));
 
 /**
- * שומר את שיוך הפריט לאזורים.
- * מוחק ומכניס מחדש בתוך הטרנזקציה של הקורא - הרשימה קטנה (עשרות אזורים לכל היותר).
+ * שומר את שיוך הפריט לאזורים *בלי לגעת בסדר הקיים*.
+ *
+ * sort_order הוא מיקום הפריט בדף הספירה של האזור. מחיקה והכנסה מחדש הייתה
+ * מערבבת את הדף בכל עריכת שם. לכן: אזור שנשאר שומר את המקום שלו, אזור שהוסר
+ * נמחק, ואזור חדש מצטרף בסוף הדף של אותו אזור.
  */
 async function replaceLocations(conn, itemId, locationIds) {
-  await conn.execute('DELETE FROM item_locations WHERE item_id = ?', [itemId]);
+  const wanted = new Set(locationIds);
 
-  for (const [index, locationId] of locationIds.entries()) {
+  const [existing] = await conn.execute(
+    'SELECT location_id AS locationId FROM item_locations WHERE item_id = ?',
+    [itemId]
+  );
+  const current = new Set(existing.map((row) => row.locationId));
+
+  for (const locationId of current) {
+    if (!wanted.has(locationId)) {
+      await conn.execute(
+        'DELETE FROM item_locations WHERE item_id = ? AND location_id = ?',
+        [itemId, locationId]
+      );
+    }
+  }
+
+  for (const locationId of wanted) {
+    if (current.has(locationId)) continue;
+
+    const [[next]] = await conn.execute(
+      'SELECT COALESCE(MAX(sort_order), -1) + 1 AS nextOrder FROM item_locations WHERE location_id = ?',
+      [locationId]
+    );
     await conn.execute(
       'INSERT INTO item_locations (item_id, location_id, sort_order) VALUES (?, ?, ?)',
-      [itemId, locationId, index]
+      [itemId, locationId, next.nextOrder]
     );
   }
 }

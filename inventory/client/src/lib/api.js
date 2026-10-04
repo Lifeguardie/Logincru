@@ -132,6 +132,7 @@ export const api = {
 
   listCounts: () => get('/counts'),
   createCount: (body) => post('/counts', body),
+  deleteCount: (countId) => del(`/counts/${countId}`),
   getSheet: (countId, locationId) => get(`/counts/${countId}/sheet?locationId=${locationId}`),
   getProgress: (countId) => get(`/counts/${countId}/progress`),
   saveLines: (countId, lines) => put(`/counts/${countId}/lines`, { lines }),

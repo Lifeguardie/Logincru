@@ -11,8 +11,10 @@ export default function Items() {
   const [data, setData] = useState({ items: [], total: 0 });
   const [categories, setCategories] = useState([]);
   const [locations, setLocations] = useState([]);
-  const [filters, setFilters] = useState({ q: '', categoryId: '', locationId: '' });
+  const [filters, setFilters] = useState({ q: '', categoryId: '', locationId: '', includeInactive: false });
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [offset, setOffset] = useState(0);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -21,21 +23,38 @@ export default function Items() {
       .catch((err) => setError(err.message));
   }, []);
 
-  const load = useCallback(async (activeFilters) => {
-    setLoading(true);
+  const PAGE_SIZE = 100;
+
+  /** טוען עמוד. offset 0 מחליף את הרשימה, אחרת מוסיף בסופה */
+  const load = useCallback(async (activeFilters, nextOffset = 0) => {
+    if (nextOffset === 0) setLoading(true); else setLoadingMore(true);
+
     try {
-      setData(await api.listItems(activeFilters));
+      const page = await api.listItems({
+        q: activeFilters.q,
+        categoryId: activeFilters.categoryId,
+        locationId: activeFilters.locationId,
+        includeInactive: activeFilters.includeInactive ? 'true' : undefined,
+        limit: PAGE_SIZE,
+        offset: nextOffset,
+      });
+
+      setData((previous) => nextOffset === 0
+        ? page
+        : { total: page.total, items: [...previous.items, ...page.items] });
+      setOffset(nextOffset + page.items.length);
       setError('');
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   }, []);
 
   // דיבאונס על החיפוש - בלי זה כל הקלדה שולחת בקשה
   useEffect(() => {
-    const timer = setTimeout(() => load(filters), 250);
+    const timer = setTimeout(() => load(filters, 0), 250);
     return () => clearTimeout(timer);
   }, [filters, load]);
 
@@ -79,6 +98,12 @@ export default function Items() {
             <option value="">כל האזורים</option>
             {locations.map((loc) => <option key={loc.id} value={loc.id}>{loc.name}</option>)}
           </select>
+          <label className="row" style={{ cursor: 'pointer', gap: 5, margin: 0 }}>
+            <input type="checkbox" style={{ width: 'auto' }}
+              checked={filters.includeInactive}
+              onChange={(e) => setFilters({ ...filters, includeInactive: e.target.checked })} />
+            <span style={{ color: 'var(--text)' }}>הצג מושבתים</span>
+          </label>
         </div>
       </div>
 
@@ -104,7 +129,10 @@ export default function Items() {
                 {data.items.map((item) => (
                   <tr key={item.id}>
                     <td>
-                      <div>{item.name}</div>
+                      <div>
+                        {item.name}
+                        {!item.active && <span className="badge closed" style={{ marginRight: 6 }}>מושבת</span>}
+                      </div>
                       {item.sku && <span className="muted">{item.sku}</span>}
                     </td>
                     <td className="muted">{item.categoryName || '—'}</td>
@@ -130,6 +158,14 @@ export default function Items() {
               </tbody>
             </table>
           </div>
+
+          {data.items.length < data.total && (
+            <div className="center" style={{ marginTop: 12 }}>
+              <button className="secondary" disabled={loadingMore} onClick={() => load(filters, offset)}>
+                {loadingMore ? 'טוען…' : `טען עוד (${data.total - data.items.length} נוספים)`}
+              </button>
+            </div>
+          )}
         </div>
       )}
     </>

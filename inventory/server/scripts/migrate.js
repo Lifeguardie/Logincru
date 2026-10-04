@@ -30,7 +30,7 @@ function splitStatements(sql) {
     .filter((statement) => statement.length > 0);
 }
 
-async function main() {
+async function runMigrations({ log = console.log } = {}) {
   // מתחברים בלי לבחור DB כדי שנוכל ליצור אותו אם הוא לא קיים
   const bootstrap = await mysql.createConnection({
     host: config.db.host,
@@ -81,14 +81,14 @@ async function main() {
 
   for (const file of files) {
     if (alreadyApplied.has(file)) {
-      console.log(`דילוג (כבר רץ): ${file}`);
+      log(`דילוג (כבר רץ): ${file}`);
       continue;
     }
 
     const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf8');
     const statements = splitStatements(sql);
 
-    console.log(`מריץ: ${file} (${statements.length} הצהרות)`);
+    log(`מריץ: ${file} (${statements.length} הצהרות)`);
 
     // DDL ב-MySQL עושה commit implicit, ולכן טרנזקציה כאן לא באמת מגנה.
     // במקום זה: אם הצהרה נכשלת עוצרים מיד ולא מסמנים את המיגרציה כהושלמה.
@@ -107,10 +107,15 @@ async function main() {
 
   await conn.end();
 
-  console.log(ranCount === 0 ? '\nאין מיגרציות חדשות.' : `\nהושלמו ${ranCount} מיגרציות.`);
+  log(ranCount === 0 ? '\nאין מיגרציות חדשות.' : `\nהושלמו ${ranCount} מיגרציות.`);
+  return ranCount;
 }
 
-main().catch((err) => {
-  console.error('המיגרציה נכשלה:', err.message);
-  process.exit(1);
-});
+module.exports = { runMigrations };
+
+if (require.main === module) {
+  runMigrations().catch((err) => {
+    console.error('המיגרציה נכשלה:', err.message);
+    process.exit(1);
+  });
+}
