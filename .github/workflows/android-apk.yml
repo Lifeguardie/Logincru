@@ -82,6 +82,4 @@ jobs:
           gh release create inventory-apk-latest inventory.apk \
             --prerelease \
             --title "ספירת מלאי - Android (latest)" \
-            --notes "APK חתום debug להתקנה ישירה. נבנה מ-${{ github.sha }} בבראנץ' ${{ github.ref_name }}.
-
-התקנה: להוריד לטלפון, לאשר התקנה ממקור לא ידוע, לפתוח, ולהזין את כתובת השרת."
+            --notes "APK חתום debug להתקנה ישירה. נבנה מ-${{ github.sha }} בבראנץ' ${{ github.ref_name }}. התקנה: להוריד לטלפון, לאשר התקנה ממקור לא ידוע, לפתוח, ולהזין את כתובת השרת."
