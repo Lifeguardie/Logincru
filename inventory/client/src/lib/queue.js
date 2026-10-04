@@ -10,7 +10,7 @@
  * את הערך האחרון בלבד ולא היסטוריה של הקלדות ביניים.
  */
 
-import { api, ApiError, getToken } from './api';
+import { api, ApiError, getToken } from './api.js';
 
 const STORAGE_KEY = 'inventory.pendingLines';
 const RETRY_DELAYS_MS = [1000, 2000, 5000, 10000, 30000];
@@ -64,6 +64,23 @@ export function enqueue(line) {
   flush();
 }
 
+/** מוסיף כמה הזנות בבת אחת (אישור מצילום) ושולח אותן בבקשה אחת */
+export function enqueueMany(lines) {
+  if (!lines || lines.length === 0) return;
+
+  let entries = readQueue();
+  const now = Date.now();
+
+  for (const line of lines) {
+    entries = entries.filter((entry) => keyOf(entry) !== keyOf(line));
+    entries.push({ ...line, queuedAt: now });
+  }
+
+  writeQueue(entries);
+  notify();
+  flush();
+}
+
 function scheduleRetry() {
   if (retryTimer) return;
 
@@ -101,7 +118,11 @@ export async function flush() {
 
   let sent = 0;
   let failed = false;
-  let remaining = [...entries];
+
+  // מפתח -> הזמן שבו ההזנה שנשלחה נכנסה לתור. אחרי השליחה מסירים מהתור
+  // רק הזנות שהן *אותה גרסה* - הזנה חדשה יותר לאותו שדה שנכנסה בזמן
+  // שהבקשה הייתה באוויר נשארת, כי הערך שלה עוד לא הגיע לשרת.
+  const settled = new Map();
 
   for (const [countId, group] of byCount) {
     const payload = group.map((entry) => ({
@@ -110,12 +131,12 @@ export async function flush() {
       itemUnitId: entry.itemUnitId,
       quantityEntered: entry.quantityEntered,
       tareUnits: entry.tareUnits ?? 1,
+      source: entry.source || 'manual',
     }));
 
     try {
       await api.saveLines(countId, payload);
-      const sentKeys = new Set(group.map(keyOf));
-      remaining = remaining.filter((entry) => !sentKeys.has(keyOf(entry)));
+      for (const entry of group) settled.set(keyOf(entry), entry.queuedAt);
       sent += group.length;
     } catch (err) {
       // 401/403/429 חולפים: הטוקן יתחדש בהתחברות מחדש, וחסימת קצב משתחררת.
@@ -125,8 +146,7 @@ export async function flush() {
       if (err instanceof ApiError && err.status >= 400 && err.status < 500 && !isRecoverable) {
         // 4xx שלא ייפתר בניסיון חוזר (הספירה נסגרה, יחידת הספירה נמחקה).
         // מוציאים מהתור כדי שלא ייתקע לנצח, ומדווחים למשתמש.
-        const stuckKeys = new Set(group.map(keyOf));
-        remaining = remaining.filter((entry) => !stuckKeys.has(keyOf(entry)));
+        for (const entry of group) settled.set(keyOf(entry), entry.queuedAt);
         failed = true;
         console.error('שורות נדחו על ידי השרת', err.message);
       } else {
@@ -135,12 +155,26 @@ export async function flush() {
     }
   }
 
+  // קוראים את התור *מחדש* - הוא יכול היה להשתנות בזמן השליחה - ומסירים
+  // רק מה שנשלח בפועל. כתיבה של הצילום הישן הייתה דורסת הזנות חדשות.
+  const current = readQueue();
+  const remaining = current.filter((entry) => {
+    const sentAt = settled.get(keyOf(entry));
+    return sentAt === undefined || entry.queuedAt > sentAt;
+  });
+
   writeQueue(remaining);
   flushing = false;
   notify();
 
-  if (remaining.length > 0) scheduleRetry();
-  else retryAttempt = 0;
+  if (remaining.length === 0) {
+    retryAttempt = 0;
+  } else if (failed) {
+    scheduleRetry();
+  } else {
+    // הזנות חדשות נכנסו בזמן השליחה - שולחים מיד, זה לא כישלון
+    flush();
+  }
 
   return { sent, failed };
 }

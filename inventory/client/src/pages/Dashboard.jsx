@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { money, date, todayIso } from '../lib/format';
+import { ValueTrend, CategoryBreakdown } from '../components/Charts';
 
 /** מסך הבית: הספירה הפעילה, ההתקדמות לפי אזור, וספירות קודמות */
 export default function Dashboard() {
@@ -11,6 +12,7 @@ export default function Dashboard() {
 
   const [counts, setCounts] = useState([]);
   const [progress, setProgress] = useState([]);
+  const [latestSummary, setLatestSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [creating, setCreating] = useState(false);
@@ -28,6 +30,10 @@ export default function Dashboard() {
 
       const open = list.find((count) => count.status === 'open');
       setProgress(open ? await api.getProgress(open.id) : []);
+
+      // פילוח המחלקות של הספירה הסגורה האחרונה, לגרף
+      const latestClosed = list.find((count) => count.status === 'closed');
+      setLatestSummary(latestClosed ? await api.getSummary(latestClosed.id) : null);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -70,6 +76,7 @@ export default function Dashboard() {
 
   if (loading) return <div className="spinner">טוען…</div>;
 
+  const closedCounts = counts.filter((count) => count.status === 'closed');
   const totalCounted = progress.reduce((sum, row) => sum + row.countedItems, 0);
   const totalItems = progress.reduce((sum, row) => sum + row.totalItems, 0);
   const totalValue = progress.reduce((sum, row) => sum + row.totalValue, 0);
@@ -184,7 +191,28 @@ export default function Dashboard() {
         </div>
       )}
 
-      {counts.filter((count) => count.status === 'closed').length > 0 && (
+      {closedCounts.length >= 2 && (
+        <div className="card">
+          <h2>שווי המלאי לאורך זמן</h2>
+          <ValueTrend
+            points={[...closedCounts].reverse().map((count) => ({
+              label: count.countDate, name: count.name, value: count.totalValue,
+            }))}
+          />
+        </div>
+      )}
+
+      {latestSummary && latestSummary.byCategory.length > 0 && (
+        <div className="card">
+          <h2>
+            פילוח לפי מחלקה
+            <span className="muted" style={{ fontWeight: 400, fontSize: 13 }}> · {latestSummary.count.name}</span>
+          </h2>
+          <CategoryBreakdown groups={latestSummary.byCategory} />
+        </div>
+      )}
+
+      {closedCounts.length > 0 && (
         <div className="card">
           <h2>ספירות קודמות</h2>
           <div className="table-wrap">
@@ -199,7 +227,7 @@ export default function Dashboard() {
                 </tr>
               </thead>
               <tbody>
-                {counts.filter((count) => count.status === 'closed').map((count) => (
+                {closedCounts.map((count) => (
                   <tr key={count.id}>
                     <td>{count.name}</td>
                     <td>{date(count.countDate)}</td>

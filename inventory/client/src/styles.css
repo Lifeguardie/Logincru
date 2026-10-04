@@ -251,3 +251,107 @@ td.num, th.num { text-align: left; font-variant-numeric: tabular-nums; }
   .content { padding: 10px; }
   th, td { padding: 8px 7px; font-size: 13px; }
 }
+
+/* ---------- זיהוי מצילום ---------- */
+
+.camera-button {
+  width: 100%;
+  margin-bottom: 12px;
+  padding: 14px;
+  font-size: 16px;
+  background: linear-gradient(135deg, var(--brand), #4a8df0);
+  border: none;
+  box-shadow: 0 2px 8px rgba(31, 111, 235, 0.3);
+}
+.camera-button:disabled { opacity: 0.8; }
+
+.ocr-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(16, 24, 40, 0.55);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+@media (min-width: 700px) { .ocr-overlay { align-items: center; padding: 20px; } }
+
+.ocr-panel {
+  background: var(--bg);
+  width: 100%;
+  max-width: 720px;
+  max-height: 94vh;
+  overflow-y: auto;
+  border-radius: 16px 16px 0 0;
+  padding: 14px;
+  padding-bottom: 0;
+}
+@media (min-width: 700px) { .ocr-panel { border-radius: var(--radius); } }
+
+.ocr-photo {
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: #000;
+  margin-bottom: 10px;
+  max-height: 220px;
+}
+.ocr-photo img { width: 100%; height: 220px; object-fit: contain; display: block; }
+
+.ocr-row {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-right: 4px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px;
+  margin-bottom: 8px;
+  opacity: 0.75;
+}
+.ocr-row.included { border-right-color: var(--success); opacity: 1; }
+
+.ocr-footer {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  margin-top: 6px;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+}
+
+/* ---------- גרפים ---------- */
+
+.chart { position: relative; }
+
+.chart-tooltip {
+  position: absolute;
+  top: 8px;
+  transform: translateX(-50%);
+  background: var(--text);
+  color: #fff;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  pointer-events: none;
+  white-space: nowrap;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  z-index: 5;
+}
+.chart-tooltip .muted { color: #c9ced6; font-size: 12px; }
+
+.chart-legend { list-style: none; margin: 10px 0 0; padding: 0; }
+.chart-legend li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+  cursor: default;
+  transition: opacity .15s;
+}
+.chart-legend li:last-child { border-bottom: none; }
+.chart-legend .swatch { width: 12px; height: 12px; border-radius: 3px; flex: none; }

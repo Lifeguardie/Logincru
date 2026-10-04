@@ -8,6 +8,10 @@ const { z } = require('zod');
 const db = require('../db');
 const units = require('../services/units');
 const valuation = require('../services/valuation');
+const ocr = require('../services/ocr');
+const { loadLocationItems } = require('../services/sheet');
+const config = require('../config');
+const multer = require('multer');
 const logger = require('../logger');
 const { asyncRoute, HttpError } = require('../middleware/errorHandler');
 const { requireAuth, requireRole } = require('../middleware/auth');
@@ -110,44 +114,12 @@ router.get('/:id/sheet', asyncRoute(async (req, res) => {
   const location = await db.queryOne('SELECT id, name FROM locations WHERE id = ?', [locationId]);
   if (!location) throw new HttpError(404, 'האזור לא נמצא');
 
-  const items = await db.query(
-    `SELECT i.id, i.sku, i.name, i.base_unit AS baseUnit,
-            i.price_per_base_unit AS pricePerBaseUnit,
-            c.name AS categoryName, il.sort_order AS sortOrder
-       FROM item_locations il
-       JOIN items i ON i.id = il.item_id
-       LEFT JOIN categories c ON c.id = i.category_id
-      WHERE il.location_id = ? AND i.active = 1
-      ORDER BY il.sort_order, i.name`,
-    [locationId]
-  );
-
+  const items = await loadLocationItems(locationId);
   const itemIds = items.map((item) => item.id);
-  let unitsByItem = new Map();
   let linesByItem = new Map();
 
   if (itemIds.length > 0) {
     const placeholders = itemIds.map(() => '?').join(',');
-
-    const unitRows = await db.query(
-      `SELECT id, item_id AS itemId, unit_name AS unitName, factor_to_base AS factorToBase,
-              tare_weight AS tareWeight, is_default AS isDefault, sort_order AS sortOrder
-         FROM item_units
-        WHERE item_id IN (${placeholders})
-        ORDER BY sort_order, id`,
-      itemIds
-    );
-
-    for (const row of unitRows) {
-      if (!unitsByItem.has(row.itemId)) unitsByItem.set(row.itemId, []);
-      unitsByItem.get(row.itemId).push({
-        id: row.id,
-        unitName: row.unitName,
-        factorToBase: units.toNumber(row.factorToBase),
-        tareWeight: row.tareWeight === null ? null : units.toNumber(row.tareWeight),
-        isDefault: Boolean(row.isDefault),
-      });
-    }
 
     const lineRows = await db.query(
       `SELECT cl.item_id AS itemId, cl.item_unit_id AS itemUnitId, cl.unit_name AS unitName,
@@ -180,8 +152,6 @@ router.get('/:id/sheet', asyncRoute(async (req, res) => {
     location: { id: location.id, name: location.name },
     items: items.map((item) => ({
       ...item,
-      pricePerBaseUnit: units.toNumber(item.pricePerBaseUnit),
-      units: unitsByItem.get(item.id) || [],
       entries: linesByItem.get(item.id) || [],
     })),
   });
@@ -194,6 +164,8 @@ const lineSchema = z.object({
   // null מוחק את ההזנה. 0 הוא ערך תקין ומשמעותי: "נספר, ואין במלאי".
   quantityEntered: z.coerce.number().min(0).nullable(),
   tareUnits: z.coerce.number().min(0).default(1),
+  // מאיפה הגיעה ההזנה. ocr = אושרה על ידי אדם אחרי זיהוי מצילום
+  source: z.enum(['manual', 'ocr']).default('manual'),
 });
 
 const linesBatchSchema = z.object({
@@ -258,7 +230,7 @@ router.put('/:id/lines', asyncRoute(async (req, res) => {
            (count_id, item_id, location_id, item_unit_id, unit_name, quantity_entered,
             factor_used, tare_used, tare_units, quantity_base, unit_price_snapshot,
             line_value, source, counted_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual', ?)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON DUPLICATE KEY UPDATE
            item_unit_id        = VALUES(item_unit_id),
            quantity_entered    = VALUES(quantity_entered),
@@ -274,7 +246,7 @@ router.put('/:id/lines', asyncRoute(async (req, res) => {
          line.quantityEntered, units.toNumber(unitRow.factor_to_base),
          units.toNumber(unitRow.tare_weight), computed.tareDeducted > 0 ? line.tareUnits : 0,
          computed.quantityBase, units.toNumber(unitRow.price_per_base_unit),
-         computed.lineValue, req.user.id]
+         computed.lineValue, line.source, req.user.id]
       );
 
       results.push({
@@ -293,6 +265,90 @@ router.put('/:id/lines', asyncRoute(async (req, res) => {
   });
 
   res.json({ saved });
+}));
+
+
+/* ---------- זיהוי מצילום ---------- */
+
+const imageUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: config.ocr.maxImageBytes, files: 1 },
+  fileFilter: (req, file, cb) => {
+    if (!/^image\/(jpeg|png|webp)$/.test(file.mimetype)) {
+      return cb(new HttpError(400, 'נתמכות תמונות JPEG, PNG או WebP בלבד'));
+    }
+    return cb(null, true);
+  },
+});
+
+/** עוטף את multer כדי ששגיאות גודל יגיעו ל-error handler בעברית */
+function singleImage(req, res, next) {
+  imageUpload.single('image')(req, res, (err) => {
+    if (err instanceof multer.MulterError) {
+      if (err.code === 'LIMIT_FILE_SIZE') return next(new HttpError(400, 'התמונה גדולה מדי'));
+      return next(new HttpError(400, `שגיאה בהעלאת התמונה: ${err.message}`));
+    }
+    if (err) return next(err);
+    if (!req.file) return next(new HttpError(400, 'לא צורפה תמונה'));
+    return next();
+  });
+}
+
+/** האם זיהוי מצילום זמין. הלקוח מסתיר את הכפתור כשלא */
+router.get('/ocr/status', (req, res) => {
+  res.json({ enabled: config.ocr.enabled, model: config.ocr.enabled ? config.ocr.model : null });
+});
+
+/**
+ * קורא דף ספירה מצולם ומחזיר הצעות. לא כותב כלום.
+ * הכתיבה קורית ב-PUT /lines אחרי שהמשתמש אישר במסך, עם source='ocr'.
+ */
+router.post('/:id/ocr', singleImage, asyncRoute(async (req, res) => {
+  const countId = z.coerce.number().int().positive().parse(req.params.id);
+  const locationId = z.coerce.number().int().positive().parse(req.body.locationId);
+
+  if (!config.ocr.enabled) {
+    throw new HttpError(503, 'זיהוי מצילום לא מוגדר בשרת. יש להגדיר ANTHROPIC_API_KEY');
+  }
+
+  await loadOpenCount(countId);
+
+  const location = await db.queryOne('SELECT id, name FROM locations WHERE id = ?', [locationId]);
+  if (!location) throw new HttpError(404, 'האזור לא נמצא');
+
+  const items = await loadLocationItems(locationId);
+  if (items.length === 0) throw new HttpError(400, 'אין פריטים משויכים לאזור הזה');
+
+  let result;
+  try {
+    result = await ocr.readCountSheet({
+      imageBase64: req.file.buffer.toString('base64'),
+      mediaType: req.file.mimetype,
+      locationName: location.name,
+      items,
+    });
+  } catch (err) {
+    const Anthropic = require('@anthropic-ai/sdk');
+    const A = Anthropic.default || Anthropic;
+    if (err instanceof A.AuthenticationError) {
+      throw new HttpError(503, 'מפתח ה-API של שירות הזיהוי לא תקין');
+    }
+    if (err instanceof A.RateLimitError) {
+      throw new HttpError(503, 'שירות הזיהוי עמוס כרגע. נסה שוב בעוד רגע');
+    }
+    if (err instanceof A.APIError || err instanceof A.APIConnectionError) {
+      logger.error('שגיאת API בזיהוי מצילום', { status: err.status, message: err.message });
+      throw new HttpError(502, 'שירות הזיהוי לא זמין כרגע');
+    }
+    throw new HttpError(502, err.message || 'הזיהוי נכשל');
+  }
+
+  logger.info('OCR הופעל', { countId, locationId, by: req.user.username, rows: result.rows.length });
+
+  res.json({
+    location: { id: location.id, name: location.name },
+    ...result,
+  });
 }));
 
 /** סוגר את הספירה ומקבע את השווי הכולל */

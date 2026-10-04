@@ -31,6 +31,13 @@ module.exports = {
     database: process.env.DB_NAME || 'resto_inventory',
     connectionLimit: num(process.env.DB_CONNECTION_LIMIT, 10),
   },
+  ocr: {
+    // זיהוי מצילום. בלי מפתח API הפיצ'ר מכובה והמסך מסביר למה.
+    enabled: Boolean(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN),
+    model: process.env.OCR_MODEL || 'claude-opus-5-5',
+    effort: process.env.OCR_EFFORT || 'high',
+    maxImageBytes: num(process.env.OCR_MAX_IMAGE_BYTES, 8 * 1024 * 1024),
+  },
   business: {
     varianceAlertPercent: num(process.env.VARIANCE_ALERT_PERCENT, 25),
     maxUploadBytes: num(process.env.MAX_UPLOAD_BYTES, 10 * 1024 * 1024),

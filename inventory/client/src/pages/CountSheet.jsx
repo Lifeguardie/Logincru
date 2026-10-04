@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../lib/api';
-import { enqueue, flush } from '../lib/queue';
+import { enqueue, enqueueMany, flush } from '../lib/queue';
+import { shrinkImage } from '../lib/image';
 import { money, quantity, baseUnitLabel } from '../lib/format';
+import OcrReview from '../components/OcrReview';
 
 /**
  * דף הספירה של אזור אחד - המקבילה לדף הנייר.
@@ -49,6 +51,17 @@ export default function CountSheet() {
   // שומר איזה שדות כבר הוזנו בפועל, כדי להבחין בין "לא נספר" ל"נספר 0"
   const [touched, setTouched] = useState(() => new Set());
   const inputRefs = useRef([]);
+
+  // זיהוי מצילום
+  const [ocrEnabled, setOcrEnabled] = useState(false);
+  const [ocrBusy, setOcrBusy] = useState(false);
+  const [ocrResult, setOcrResult] = useState(null);
+  const [ocrImageUrl, setOcrImageUrl] = useState(null);
+  const cameraRef = useRef(null);
+
+  useEffect(() => {
+    api.ocrStatus().then((status) => setOcrEnabled(Boolean(status.enabled))).catch(() => {});
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -104,6 +117,64 @@ export default function CountSheet() {
       quantityEntered: parsed,
       tareUnits: unit.tareWeight ? 1 : 0,
     });
+  }
+
+  /** צילום הדף: מקטין, שולח לזיהוי, ופותח את מסך האישור */
+  async function handlePhoto(event) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    setOcrBusy(true);
+    setError('');
+
+    try {
+      const blob = await shrinkImage(file);
+      const result = await api.ocrSheet(countId, locationId, blob);
+      setOcrImageUrl(URL.createObjectURL(blob));
+      setOcrResult(result);
+    } catch (err) {
+      setError(err.message || 'הזיהוי נכשל');
+    } finally {
+      setOcrBusy(false);
+    }
+  }
+
+  /** המשתמש אישר שורות מהצילום - נכנסות לתור בדיוק כמו הקלדה ידנית */
+  function applyOcrRows(entries) {
+    const nextValues = {};
+    const nextTouched = new Set();
+    const lines = [];
+
+    for (const entry of entries) {
+      const item = sheet.items.find((i) => i.id === entry.itemId);
+      const unit = item?.units.find((u) => u.id === entry.itemUnitId);
+      if (!item || !unit) continue;
+
+      nextValues[unit.id] = String(entry.quantity);
+      nextTouched.add(unit.id);
+
+      lines.push({
+        countId: Number(countId),
+        itemId: item.id,
+        locationId: Number(locationId),
+        itemUnitId: unit.id,
+        quantityEntered: entry.quantity,
+        tareUnits: unit.tareWeight ? 1 : 0,
+        source: 'ocr',
+      });
+    }
+
+    enqueueMany(lines);
+    setValues((previous) => ({ ...previous, ...nextValues }));
+    setTouched((previous) => new Set([...previous, ...nextTouched]));
+    closeOcr();
+  }
+
+  function closeOcr() {
+    if (ocrImageUrl) URL.revokeObjectURL(ocrImageUrl);
+    setOcrImageUrl(null);
+    setOcrResult(null);
   }
 
   /** Enter מקפיץ לשדה הבא - מאפשר לרוץ על הדף בלי להרים אצבע מהמקלדת */
@@ -173,6 +244,36 @@ export default function CountSheet() {
 
       {isClosed && (
         <div className="alert warn">הספירה סגורה. הנתונים מוצגים לקריאה בלבד.</div>
+      )}
+
+      {!isClosed && ocrEnabled && (
+        <>
+          <input
+            ref={cameraRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            hidden
+            onChange={handlePhoto}
+          />
+          <button
+            className="camera-button"
+            onClick={() => cameraRef.current?.click()}
+            disabled={ocrBusy}
+          >
+            {ocrBusy ? 'קורא את הדף… זה לוקח כמה שניות' : '📷 צלם את דף הספירה'}
+          </button>
+        </>
+      )}
+
+      {ocrResult && (
+        <OcrReview
+          result={ocrResult}
+          imageUrl={ocrImageUrl}
+          items={sheet.items}
+          onApply={applyOcrRows}
+          onCancel={closeOcr}
+        />
       )}
 
       <div className="field">

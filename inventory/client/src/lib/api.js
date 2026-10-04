@@ -138,6 +138,13 @@ export const api = {
   closeCount: (countId) => post(`/counts/${countId}/close`),
   reopenCount: (countId) => post(`/counts/${countId}/reopen`),
   getSummary: (countId) => get(`/counts/${countId}/summary`),
+  ocrStatus: () => get('/counts/ocr/status'),
+  ocrSheet: (countId, locationId, imageBlob) => {
+    const formData = new FormData();
+    formData.append('locationId', String(locationId));
+    formData.append('image', imageBlob, 'sheet.jpg');
+    return request('POST', `/counts/${countId}/ocr`, { formData });
+  },
   exportCount: (countId, name) => download(`/reports/counts/${countId}/export`, `${name}.xlsx`),
 
   listPurchases: (params) => get(`/purchases${qs(params)}`),
