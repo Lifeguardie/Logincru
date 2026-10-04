@@ -37,6 +37,15 @@ function EditableList({ title, hint, items, onCreate, onUpdate, renderExtra }) {
     }
   }
 
+  async function toggleActive(row, active) {
+    setError('');
+    try {
+      await onUpdate(row.id, { name: row.name, sortOrder: row.sortOrder, active });
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
   /** הזזה למעלה/למטה: כותבים מחדש את sortOrder לפי המיקום החדש */
   async function move(index, direction) {
     const target = index + direction;
@@ -88,7 +97,7 @@ function EditableList({ title, hint, items, onCreate, onUpdate, renderExtra }) {
                 <td style={{ width: 80 }}>
                   <label className="row" style={{ gap: 4, cursor: 'pointer', margin: 0 }}>
                     <input type="checkbox" style={{ width: 'auto' }} checked={row.active}
-                      onChange={(e) => onUpdate(row.id, { name: row.name, sortOrder: row.sortOrder, active: e.target.checked })} />
+                      onChange={(e) => toggleActive(row, e.target.checked)} />
                     <span style={{ color: 'var(--text)', fontSize: 13 }}>פעיל</span>
                   </label>
                 </td>

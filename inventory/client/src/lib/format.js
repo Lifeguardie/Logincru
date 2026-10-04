@@ -35,9 +35,27 @@ export function date(value) {
   return parsed.toLocaleDateString('he-IL');
 }
 
-/** תאריך היום כ-YYYY-MM-DD, לפי אזור הזמן המקומי ולא UTC */
-export function todayIso() {
-  const now = new Date();
+/** תאריך כ-YYYY-MM-DD לפי אזור הזמן המקומי ולא UTC. ברירת מחדל: היום */
+export function todayIso(d = new Date()) {
   const pad = (n) => String(n).padStart(2, '0');
-  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** מפתח חודש YYYY-MM מתוך תאריך (מחרוזת ISO או Date) */
+export function monthKey(value) {
+  const text = value instanceof Date ? todayIso(value) : String(value);
+  return text.slice(0, 7);
+}
+
+/** "אוקטובר 2026" */
+export function monthLabel(value) {
+  const key = monthKey(value);
+  const [year, month] = key.split('-').map(Number);
+  return new Date(year, month - 1, 1).toLocaleDateString('he-IL', { month: 'long', year: 'numeric' });
+}
+
+/** YYYY-MM של החודש הקודם לחודש נתון (ברירת מחדל: היום) */
+export function previousMonthKey(from = new Date()) {
+  const d = new Date(from.getFullYear(), from.getMonth() - 1, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }

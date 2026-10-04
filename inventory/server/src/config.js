@@ -19,6 +19,9 @@ if (isProduction && (!jwtSecret || jwtSecret.length < 32)) {
 module.exports = {
   isProduction,
   port: num(process.env.PORT, 4010),
+  // רק מאחורי reverse proxy. בלי זה כל אחד יכול לזייף X-Forwarded-For
+  // ולעקוף את מגביל ההתחברות לפי כתובת.
+  trustProxy: ['1', 'true', 'yes'].includes(String(process.env.TRUST_PROXY || '').toLowerCase()),
   jwt: {
     secret: jwtSecret || 'dev-only-insecure-secret-do-not-use-in-production',
     expiresIn: process.env.JWT_EXPIRES_IN || '12h',

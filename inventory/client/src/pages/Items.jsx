@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
@@ -24,9 +24,13 @@ export default function Items() {
   }, []);
 
   const PAGE_SIZE = 100;
+  // מונה בקשות: תשובה של "טען עוד" שהגיעה אחרי שהמסנן השתנה נזרקת,
+  // אחרת פריטים של חיפוש ישן היו נדבקים לרשימה של חיפוש חדש
+  const requestSeq = useRef(0);
 
   /** טוען עמוד. offset 0 מחליף את הרשימה, אחרת מוסיף בסופה */
   const load = useCallback(async (activeFilters, nextOffset = 0) => {
+    const seq = ++requestSeq.current;
     if (nextOffset === 0) setLoading(true); else setLoadingMore(true);
 
     try {
@@ -39,16 +43,20 @@ export default function Items() {
         offset: nextOffset,
       });
 
+      if (seq !== requestSeq.current) return; // בקשה חדשה יותר כבר יצאה
+
       setData((previous) => nextOffset === 0
         ? page
         : { total: page.total, items: [...previous.items, ...page.items] });
       setOffset(nextOffset + page.items.length);
       setError('');
     } catch (err) {
-      setError(err.message);
+      if (seq === requestSeq.current) setError(err.message);
     } finally {
-      setLoading(false);
-      setLoadingMore(false);
+      if (seq === requestSeq.current) {
+        setLoading(false);
+        setLoadingMore(false);
+      }
     }
   }, []);
 

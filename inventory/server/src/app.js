@@ -3,6 +3,7 @@
 const path = require('path');
 const express = require('express');
 
+const config = require('./config');
 const logger = require('./logger');
 const { notFound, errorHandler } = require('./middleware/errorHandler');
 
@@ -18,7 +19,7 @@ const usersRoutes = require('./routes/users');
 const app = express();
 
 app.disable('x-powered-by');
-app.set('trust proxy', 1);
+app.set('trust proxy', config.trustProxy ? 1 : false);
 
 // כותרות אבטחה בסיסיות. בלי helmet - ארבע כותרות לא מצדיקות תלות.
 app.use((req, res, next) => {

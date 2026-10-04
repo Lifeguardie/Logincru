@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { money, date, todayIso } from '../lib/format';
+import { money, date, todayIso, monthKey, monthLabel } from '../lib/format';
 import { ValueTrend, CategoryBreakdown } from '../components/Charts';
 
 /** מסך הבית: הספירה הפעילה, ההתקדמות לפי אזור, וספירות קודמות */
@@ -206,7 +206,10 @@ export default function Dashboard() {
               </div>
             </form>
           ) : (
-            <button onClick={() => setCreating(true)}>פתיחת ספירה חדשה</button>
+            <button onClick={() => {
+              setNewCount({ name: `ספירת ${monthLabel(todayIso())}`, countDate: todayIso() });
+              setCreating(true);
+            }}>פתיחת ספירה חדשה</button>
           )}
         </div>
       )}
@@ -247,7 +250,15 @@ export default function Dashboard() {
                 </tr>
               </thead>
               <tbody>
-                {closedCounts.map((count) => (
+                {closedCounts.map((count, index) => {
+                  const key = monthKey(count.countDate);
+                  const newMonth = index === 0 || monthKey(closedCounts[index - 1].countDate) !== key;
+                  return [
+                    newMonth && (
+                      <tr key={`m-${key}`} className="month-row">
+                        <td colSpan={5}>{monthLabel(count.countDate)}</td>
+                      </tr>
+                    ),
                   <tr key={count.id}>
                     <td>{count.name}</td>
                     <td>{date(count.countDate)}</td>
@@ -258,8 +269,9 @@ export default function Dashboard() {
                         <button className="secondary small">סיכום</button>
                       </Link>
                     </td>
-                  </tr>
-                ))}
+                  </tr>,
+                  ];
+                })}
               </tbody>
             </table>
           </div>

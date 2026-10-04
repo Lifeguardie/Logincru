@@ -15,6 +15,7 @@ import ChangePassword from './pages/ChangePassword';
 import Users from './pages/Users';
 import Settings from './pages/Settings';
 import SheetOrder from './pages/SheetOrder';
+import ImportPurchases from './pages/ImportPurchases';
 
 /** חוסם מסכים למי שלא מחובר, ומסכי ניהול למי שאין לו תפקיד מתאים */
 function Protected({ children, minimumRole }) {
@@ -81,6 +82,7 @@ export default function App() {
               <Route path="/items/:itemId" element={<Protected minimumRole="manager"><ItemEditor /></Protected>} />
               <Route path="/items/import" element={<Protected minimumRole="manager"><ImportItems /></Protected>} />
               <Route path="/purchases" element={<Protected minimumRole="manager"><Purchases /></Protected>} />
+              <Route path="/purchases/import" element={<Protected minimumRole="manager"><ImportPurchases /></Protected>} />
               <Route path="/reports" element={<Protected minimumRole="manager"><Reports /></Protected>} />
               <Route path="/password" element={<ChangePassword />} />
               <Route path="/settings" element={<Protected minimumRole="manager"><Settings /></Protected>} />

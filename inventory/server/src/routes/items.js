@@ -246,28 +246,29 @@ router.put('/:id', requireRole('manager'), asyncRoute(async (req, res) => {
 
 /* ---------- יחידות ספירה ---------- */
 
-/** יחידת ברירת מחדל אחת לפריט - כשמסמנים אחת, השאר מתנקות */
-async function clearOtherDefaults(itemId, keepUnitId) {
-  await db.query(
-    'UPDATE item_units SET is_default = 0 WHERE item_id = ? AND id <> ?',
-    [itemId, keepUnitId ?? 0]
-  );
-}
-
 router.post('/:id/units', requireRole('manager'), asyncRoute(async (req, res) => {
   const itemId = z.coerce.number().int().positive().parse(req.params.id);
   const body = unitSchema.parse(req.body);
 
-  if (body.isDefault) await clearOtherDefaults(itemId, null);
+  // הכנסה ואז ניקוי ברירות מחדל אחרות - באותה טרנזקציה. אם ההכנסה נכשלת
+  // (שם כפול) הברירה הקיימת נשארת במקום.
+  const id = await db.transaction(async (conn) => {
+    const [result] = await conn.execute(
+      `INSERT INTO item_units (item_id, unit_name, factor_to_base, tare_weight, is_default, sort_order)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [itemId, body.unitName, body.factorToBase, body.tareWeight ?? null,
+       body.isDefault ? 1 : 0, body.sortOrder]
+    );
+    if (body.isDefault) {
+      await conn.execute(
+        'UPDATE item_units SET is_default = 0 WHERE item_id = ? AND id <> ?',
+        [itemId, result.insertId]
+      );
+    }
+    return result.insertId;
+  });
 
-  const result = await db.query(
-    `INSERT INTO item_units (item_id, unit_name, factor_to_base, tare_weight, is_default, sort_order)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [itemId, body.unitName, body.factorToBase, body.tareWeight ?? null,
-     body.isDefault ? 1 : 0, body.sortOrder]
-  );
-
-  res.status(201).json({ id: result.insertId, ...body });
+  res.status(201).json({ id, ...body });
 }));
 
 router.put('/:id/units/:unitId', requireRole('manager'), asyncRoute(async (req, res) => {
@@ -275,17 +276,26 @@ router.put('/:id/units/:unitId', requireRole('manager'), asyncRoute(async (req, 
   const unitId = z.coerce.number().int().positive().parse(req.params.unitId);
   const body = unitSchema.parse(req.body);
 
-  if (body.isDefault) await clearOtherDefaults(itemId, unitId);
+  await db.transaction(async (conn) => {
+    const [result] = await conn.execute(
+      `UPDATE item_units
+          SET unit_name = ?, factor_to_base = ?, tare_weight = ?, is_default = ?, sort_order = ?
+        WHERE id = ? AND item_id = ?`,
+      [body.unitName, body.factorToBase, body.tareWeight ?? null,
+       body.isDefault ? 1 : 0, body.sortOrder, unitId, itemId]
+    );
 
-  const result = await db.query(
-    `UPDATE item_units
-        SET unit_name = ?, factor_to_base = ?, tare_weight = ?, is_default = ?, sort_order = ?
-      WHERE id = ? AND item_id = ?`,
-    [body.unitName, body.factorToBase, body.tareWeight ?? null,
-     body.isDefault ? 1 : 0, body.sortOrder, unitId, itemId]
-  );
+    // 404 כאן מגלגל לאחור - שום ברירת מחדל לא נמחקה על יחידה שלא קיימת
+    if (result.affectedRows === 0) throw new HttpError(404, 'יחידת הספירה לא נמצאה');
 
-  if (result.affectedRows === 0) throw new HttpError(404, 'יחידת הספירה לא נמצאה');
+    if (body.isDefault) {
+      await conn.execute(
+        'UPDATE item_units SET is_default = 0 WHERE item_id = ? AND id <> ?',
+        [itemId, unitId]
+      );
+    }
+  });
+
   res.json({ id: unitId, ...body });
 }));
 

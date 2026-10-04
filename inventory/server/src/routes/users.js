@@ -10,6 +10,7 @@ const db = require('../db');
 const logger = require('../logger');
 const { asyncRoute, HttpError } = require('../middleware/errorHandler');
 const { requireAuth, requireRole } = require('../middleware/auth');
+const { publicUser } = require('../services/userView');
 
 const router = express.Router();
 
@@ -36,15 +37,7 @@ const resetSchema = z.object({
 });
 
 function toPublic(row) {
-  return {
-    id: row.id,
-    username: row.username,
-    fullName: row.full_name,
-    role: row.role,
-    active: Boolean(row.active),
-    mustChangePassword: Boolean(row.must_change_password),
-    createdAt: row.created_at,
-  };
+  return { ...publicUser(row), active: Boolean(row.active), createdAt: row.created_at };
 }
 
 /** מוודא שאחרי השינוי יישאר לפחות מנהל מערכת פעיל אחד */

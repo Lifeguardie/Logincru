@@ -75,8 +75,7 @@ async function upsertByName(table, name, sortOrder) {
   return result.insertId;
 }
 
-async function runSeed({ demo = false, log = console.log } = {}) {
-  const withDemo = demo;
+async function runSeed({ demo: withDemo = false, log = console.log } = {}) {
   const locationIds = new Map();
   for (const [index, name] of LOCATIONS.entries()) {
     locationIds.set(name, await upsertByName('locations', name, index));

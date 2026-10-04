@@ -2,51 +2,17 @@
 
 /** אבטחה וחשבונות: חובת החלפת סיסמה, הגבלת ניסיונות, ניהול משתמשים */
 
-process.env.DB_NAME = 'resto_inventory_test_sec';
-process.env.NODE_ENV = 'test';
-process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret-0123456789abcdef0123456789abcdef';
-
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const mysql = require('mysql2/promise');
-
-const config = require('../src/config');
-const { runMigrations } = require('../scripts/migrate');
-const { runSeed } = require('../scripts/seed');
+const { harness } = require('./helpers');
 const { MAX_FAILURES } = require('../src/middleware/loginLimiter');
 
-let server, base, dbAvailable = false;
+const h = harness('resto_inventory_test_sec');
+const { call, skipIfNoDb } = h;
+const login = (username, password, headers) => call('POST', '/auth/login', { body: { username, password }, headers });
 
-async function call(method, path, { body, token } = {}) {
-  const headers = {};
-  if (token) headers.Authorization = `Bearer ${token}`;
-  if (body !== undefined) headers['Content-Type'] = 'application/json';
-  const response = await fetch(`${base}/api${path}`, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined });
-  const text = await response.text();
-  let payload = null; try { payload = text ? JSON.parse(text) : null; } catch (_) { payload = text; }
-  return { status: response.status, body: payload, headers: response.headers };
-}
-const login = (username, password) => call('POST', '/auth/login', { body: { username, password } });
-const skipIfNoDb = (t) => { if (!dbAvailable) { t.skip('אין MariaDB זמין'); return true; } return false; };
-
-test.before(async () => {
-  try {
-    const conn = await mysql.createConnection({ host: config.db.host, port: config.db.port, user: config.db.user, password: config.db.password });
-    await conn.query('DROP DATABASE IF EXISTS resto_inventory_test_sec');
-    await conn.end();
-  } catch (_) { return; }
-  await runMigrations({ log: () => {} });
-  await runSeed({ demo: false, log: () => {} });
-  dbAvailable = true;
-  const app = require('../src/app');
-  server = app.listen(0);
-  base = `http://127.0.0.1:${server.address().port}`;
-});
-
-test.after(async () => {
-  if (server) await new Promise((resolve) => server.close(resolve));
-  if (dbAvailable) await require('../src/db').pool.end();
-});
+test.before(h.before);
+test.after(h.after);
 
 let admin;
 
@@ -167,6 +133,19 @@ test('הגבלת ניסיונות: אחרי 10 כשלונות גם סיסמה נ
   assert.match(locked.body.error, /דקות/);
 
   assert.equal((await login('admin', 'Str0ng-pass')).status, 200, 'משתמש אחר מאותה כתובת לא נחסם');
+});
+
+test('בלי TRUST_PROXY, סבב כתובות ב-X-Forwarded-For לא עוקף את הנעילה', async (t) => {
+  if (skipIfNoDb(t)) return;
+
+  await call('POST', '/users', { token: admin, body: { username: 'spoofed', password: 'Spoof-1234', fullName: 'x', role: 'counter' } });
+
+  for (let i = 0; i < MAX_FAILURES; i += 1) {
+    const status = (await login('spoofed', 'nope', { 'X-Forwarded-For': `10.0.0.${i}` })).status;
+    assert.equal(status, 401);
+  }
+  assert.equal((await login('spoofed', 'Spoof-1234', { 'X-Forwarded-For': '10.0.0.99' })).status, 429,
+    'הכותרת מזויפת ולא נספרת - עדיין נעול');
 });
 
 test('כותרות אבטחה על תשובות API', async (t) => {

@@ -355,3 +355,12 @@ td.num, th.num { text-align: left; font-variant-numeric: tabular-nums; }
 }
 .chart-legend li:last-child { border-bottom: none; }
 .chart-legend .swatch { width: 12px; height: 12px; border-radius: 3px; flex: none; }
+
+/* שורת כותרת חודש בטבלת הספירות */
+.month-row td {
+  background: #f0f2f5;
+  color: var(--text-dim);
+  font-weight: 600;
+  font-size: 13px;
+  padding: 6px 10px;
+}

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import { money, quantity, date, todayIso, baseUnitLabel } from '../lib/format';
 
@@ -81,7 +82,10 @@ export default function Purchases() {
       {message && <div className="alert success">{message}</div>}
 
       <form className="card" onSubmit={submit}>
-        <h2>רישום רכש</h2>
+        <div className="row" style={{ marginBottom: 6 }}>
+          <h2 className="grow" style={{ margin: 0 }}>רישום רכש</h2>
+          <Link to="/purchases/import"><button type="button" className="secondary small">ייבוא מאקסל</button></Link>
+        </div>
         <p className="muted">
           הכמות מוזנת ביחידת הבסיס של הפריט. הנתון הזה נדרש כדי לחשב
           כמה באמת נצרך בין שתי ספירות.

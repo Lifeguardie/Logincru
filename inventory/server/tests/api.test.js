@@ -6,67 +6,21 @@
  * מדלג על הכל אם אין MariaDB זמין.
  */
 
-process.env.DB_NAME = 'resto_inventory_test';
-process.env.NODE_ENV = 'test';
-process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret-0123456789abcdef0123456789abcdef';
-
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const mysql = require('mysql2/promise');
+const { harness } = require('./helpers');
 
-const config = require('../src/config');
-const { runMigrations } = require('../scripts/migrate');
-const { runSeed } = require('../scripts/seed');
+const h = harness('resto_inventory_test', { demo: true });
+const { call, skipIfNoDb } = h;
 
-let server;
-let base;
-let dbAvailable = false;
 let admin;
 let counter;
 
-/** קריאה ל-API. מחזיר {status, body} ולא זורק, כדי לבדוק גם שגיאות */
-async function call(method, path, { body, token } = {}) {
-  const headers = {};
-  if (token) headers.Authorization = `Bearer ${token}`;
-  if (body !== undefined) headers['Content-Type'] = 'application/json';
-
-  const response = await fetch(`${base}/api${path}`, {
-    method, headers, body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
-
-  let payload = null;
-  const text = await response.text();
-  try { payload = text ? JSON.parse(text) : null; } catch (_) { payload = text; }
-  return { status: response.status, body: payload };
-}
-
-const skipIfNoDb = (t) => { if (!dbAvailable) { t.skip('אין MariaDB זמין'); return true; } return false; };
-
 test.before(async () => {
-  // DB נקי בכל ריצה
-  try {
-    const conn = await mysql.createConnection({
-      host: config.db.host, port: config.db.port, user: config.db.user, password: config.db.password,
-    });
-    await conn.query('DROP DATABASE IF EXISTS resto_inventory_test');
-    await conn.end();
-  } catch (_) {
-    return; // dbAvailable נשאר false
-  }
+  await h.before();
+  if (!h.state.dbAvailable) return;
 
-  await runMigrations({ log: () => {} });
-  await runSeed({ demo: true, log: () => {} });
-  dbAvailable = true;
-
-  const app = require('../src/app');
-  server = app.listen(0);
-  base = `http://127.0.0.1:${server.address().port}`;
-
-  // ה-admin מהזריעה חייב להחליף סיסמה לפני כל דבר אחר
-  const firstLogin = (await call('POST', '/auth/login', { body: { username: 'admin', password: 'admin1234' } })).body;
-  admin = (await call('PUT', '/auth/password', {
-    token: firstLogin.token, body: { currentPassword: 'admin1234', newPassword: 'Admin-Test-2026' },
-  })).body.token;
+  admin = await h.adminToken();
 
   // משתמש counter לבדיקת הרשאות
   const bcrypt = require('bcryptjs');
@@ -78,10 +32,7 @@ test.before(async () => {
   counter = (await call('POST', '/auth/login', { body: { username: 'sofer', password: 'counter123' } })).body.token;
 });
 
-test.after(async () => {
-  if (server) await new Promise((resolve) => server.close(resolve));
-  if (dbAvailable) await require('../src/db').pool.end();
-});
+test.after(h.after);
 
 test('התחברות: נכון 200, שגוי 401, בלי טוקן 401', async (t) => {
   if (skipIfNoDb(t)) return;
@@ -289,6 +240,12 @@ test('יחידת ברירת מחדל: אחת בלבד לפריט', async (t) => 
   const item = (await call('GET', `/items/${created}`, { token: admin })).body;
   assert.equal(item.units.filter((u) => u.isDefault).length, 1);
   assert.equal(item.units.find((u) => u.isDefault).id, box.id, 'הארגז הפך לברירת מחדל והבסיס התנקה');
+
+  // כישלון (שם כפול / יחידה לא קיימת) לא מוחק את הברירה הקיימת
+  assert.equal((await call('POST', `/items/${created}/units`, { token: admin, body: { unitName: 'ארגז', factorToBase: 7, isDefault: true } })).status, 409);
+  assert.equal((await call('PUT', `/items/${created}/units/999999`, { token: admin, body: { unitName: 'x', factorToBase: 1, isDefault: true } })).status, 404);
+  const after = (await call('GET', `/items/${created}`, { token: admin })).body;
+  assert.equal(after.units.find((u) => u.isDefault)?.id, box.id, 'הברירה שרדה את הכישלונות');
 });
 
 test('פריט מושבת: נעלם מהרשימה, חוזר עם includeInactive=true, ו-"false" הוא באמת false', async (t) => {

@@ -11,6 +11,7 @@ const logger = require('../logger');
 const { asyncRoute, HttpError } = require('../middleware/errorHandler');
 const { requireAuth } = require('../middleware/auth');
 const { loginLimiter, recordFailure, clearFailures } = require('../middleware/loginLimiter');
+const { publicUser } = require('../services/userView');
 
 const router = express.Router();
 
@@ -19,23 +20,16 @@ const loginSchema = z.object({
   password: z.string().min(1, 'נדרשת סיסמה'),
 });
 
-/** חותם טוקן. הדגל pwd גורם ל-requireAuth לחסום הכל חוץ מהחלפת סיסמה */
+/**
+ * חותם טוקן. הטוקן נושא רק זהות - תפקיד, סטטוס ודגל החלפת סיסמה נקראים
+ * מה-DB בכל בקשה (ראו middleware/auth.js), ולכן לא נכנסים לכאן.
+ */
 function signToken(user) {
   return jwt.sign(
-    { sub: user.id, username: user.username, role: user.role, pwd: user.must_change_password ? 1 : 0 },
+    { sub: user.id, username: user.username },
     config.jwt.secret,
     { expiresIn: config.jwt.expiresIn }
   );
-}
-
-function publicUser(user) {
-  return {
-    id: user.id,
-    username: user.username,
-    fullName: user.full_name,
-    role: user.role,
-    mustChangePassword: Boolean(user.must_change_password),
-  };
 }
 
 router.post('/login', loginLimiter, asyncRoute(async (req, res) => {

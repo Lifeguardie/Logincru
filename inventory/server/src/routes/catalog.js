@@ -100,14 +100,15 @@ router.put('/locations/:id/order', requireAuth, requireRole('manager'), asyncRou
   const sent = new Set(itemIds);
   const finalOrder = [...itemIds, ...rows.map((row) => row.itemId).filter((id) => !sent.has(id))];
 
-  await db.transaction(async (conn) => {
-    for (const [index, itemId] of finalOrder.entries()) {
-      await conn.execute(
-        'UPDATE item_locations SET sort_order = ? WHERE item_id = ? AND location_id = ?',
-        [index, itemId, locationId]
-      );
-    }
-  });
+  // הצהרה אחת לכל הדף במקום UPDATE לכל פריט. כל הזוגות כבר קיימים (אומת
+  // למעלה), ולכן ON DUPLICATE KEY רק מעדכן את הסדר.
+  const values = finalOrder.map((itemId, index) => [itemId, locationId, index]);
+  await db.query(
+    `INSERT INTO item_locations (item_id, location_id, sort_order)
+     VALUES ${values.map(() => '(?, ?, ?)').join(', ')}
+     ON DUPLICATE KEY UPDATE sort_order = VALUES(sort_order)`,
+    values.flat()
+  );
 
   logger.info('סדר הדף עודכן', { locationId, items: finalOrder.length, by: req.user.username });
   res.json({ locationId, itemIds: finalOrder });
