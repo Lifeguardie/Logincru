@@ -1,0 +1,11 @@
+{
+  "appId": "com.shiftmate.inventory",
+  "appName": "ספירת מלאי",
+  "webDir": "dist",
+  "android": {
+    "allowMixedContent": false
+  },
+  "server": {
+    "androidScheme": "https"
+  }
+}

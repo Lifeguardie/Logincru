@@ -1,0 +1,87 @@
+# בונה APK של אפליקציית ספירת המלאי ומצרף אותו ל-Release עם קישור קבוע:
+#   https://github.com/Lifeguardie/Logincru/releases/download/inventory-apk-latest/inventory.apk
+#
+# הבנייה רצה כאן ולא במכונת פיתוח כי ה-runner מגיע עם Android SDK מותקן.
+# ה-APK חתום בחתימת debug - מתאים להתקנה ישירה ("מקורות לא ידועים"),
+# לא ל-Play Store (שם נדרש keystore חתימה - שלב נפרד).
+
+name: Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['**']
+    paths:
+      - 'inventory/**'
+      - '.github/workflows/android-apk.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-apk
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: inventory/client
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: inventory/client/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Install client dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Build web assets (native, without service worker)
+        run: npm run build
+        env:
+          VITE_NATIVE: '1'
+
+      - name: Sync web assets into the Android project
+        run: npx cap sync android
+
+      - name: Build debug APK
+        working-directory: inventory/client/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Collect APK
+        working-directory: inventory/client/android
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/inventory.apk"
+          ls -la "$GITHUB_WORKSPACE/inventory.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: inventory-apk
+          path: inventory.apk
+          retention-days: 30
+
+      # Release אחד שמתעדכן בכל בנייה, כדי שהקישור יישאר קבוע
+      - name: Publish to the "latest" release
+        working-directory: ${{ github.workspace }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete inventory-apk-latest --yes --cleanup-tag || true
+          gh release create inventory-apk-latest inventory.apk \
+            --prerelease \
+            --title "ספירת מלאי - Android (latest)" \
+            --notes "APK חתום debug להתקנה ישירה. נבנה מ-${{ github.sha }} בבראנץ' ${{ github.ref_name }}.
+
+התקנה: להוריד לטלפון, לאשר התקנה ממקור לא ידוע, לפתוח, ולהזין את כתובת השרת."

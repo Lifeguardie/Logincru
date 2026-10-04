@@ -1,5 +1,6 @@
 import { Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { useAuth } from './lib/auth';
+import { isNative, getServerUrl } from './lib/api';
 import QueueStatus from './components/QueueStatus';
 
 import Login from './pages/Login';
@@ -16,6 +17,7 @@ import Users from './pages/Users';
 import Settings from './pages/Settings';
 import SheetOrder from './pages/SheetOrder';
 import ImportPurchases from './pages/ImportPurchases';
+import ServerSetup from './pages/ServerSetup';
 
 /** חוסם מסכים למי שלא מחובר, ומסכי ניהול למי שאין לו תפקיד מתאים */
 function Protected({ children, minimumRole }) {
@@ -66,8 +68,14 @@ function Shell({ children }) {
 }
 
 export default function App() {
+  // באפליקציה הנייטיב, בלי כתובת שרת אין עם מי לדבר - קודם מגדירים
+  if (isNative() && !getServerUrl()) {
+    return <ServerSetup />;
+  }
+
   return (
     <Routes>
+      <Route path="/server" element={<ServerSetup />} />
       <Route path="/login" element={<Login />} />
 
       <Route path="/*" element={

@@ -2,10 +2,14 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
+// VITE_NATIVE=1 = בנייה לאפליקציית Android. ב-WebView אין צורך ב-service worker
+// והוא רק מסבך עדכוני גרסה, אז הוא לא נכנס.
+const native = process.env.VITE_NATIVE === '1';
+
 export default defineConfig({
   plugins: [
     react(),
-    VitePWA({
+    !native && VitePWA({
       registerType: 'autoUpdate',
       injectRegister: 'auto',
       includeAssets: ['icon.svg'],
@@ -36,7 +40,7 @@ export default defineConfig({
         runtimeCaching: [],
       },
     }),
-  ],
+  ].filter(Boolean),
   server: {
     port: 5173,
     proxy: { '/api': 'http://localhost:4010' },

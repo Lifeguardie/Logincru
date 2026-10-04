@@ -148,6 +148,26 @@ test('בלי TRUST_PROXY, סבב כתובות ב-X-Forwarded-For לא עוקף �
     'הכותרת מזויפת ולא נספרת - עדיין נעול');
 });
 
+test('CORS: מקור של אפליקציית Android מקבל כותרות, מקור זר לא', async (t) => {
+  if (skipIfNoDb(t)) return;
+
+  const preflight = await fetch(`${h.state.base}/api/items`, {
+    method: 'OPTIONS',
+    headers: { Origin: 'https://localhost', 'Access-Control-Request-Method': 'PUT', 'Access-Control-Request-Headers': 'authorization' },
+  });
+  assert.equal(preflight.status, 204);
+  assert.equal(preflight.headers.get('access-control-allow-origin'), 'https://localhost');
+  assert.match(preflight.headers.get('access-control-allow-headers'), /Authorization/);
+
+  const native = await call('GET', '/health', { headers: { Origin: 'capacitor://localhost' } });
+  assert.equal(native.headers.get('access-control-allow-origin'), 'capacitor://localhost');
+
+  const foreign = await call('GET', '/health', { headers: { Origin: 'https://evil.example' } });
+  assert.equal(foreign.headers.get('access-control-allow-origin'), null, 'מקור זר לא מקבל CORS');
+  const foreignPreflight = await fetch(`${h.state.base}/api/items`, { method: 'OPTIONS', headers: { Origin: 'https://evil.example' } });
+  assert.notEqual(foreignPreflight.headers.get('access-control-allow-origin'), 'https://evil.example');
+});
+
 test('כותרות אבטחה על תשובות API', async (t) => {
   if (skipIfNoDb(t)) return;
   const response = await call('GET', '/health');

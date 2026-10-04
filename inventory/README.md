@@ -160,9 +160,26 @@ npm --prefix client run dev     # לקוח על 5173, עם proxy ל-API
 
 ### התקנה בטלפון
 
-האפליקציה היא PWA: פותחים אותה בדפדפן הטלפון ובוחרים "הוסף למסך הבית".
-היא נפתחת במסך מלא עם אייקון משלה, וגם נטענת בלי רשת — נתוני המלאי
-עצמם לעולם לא נשמרים במטמון, רק המעטפת.
+שתי דרכים:
+
+**א. אפליקציית Android (APK)** — קישור הורדה קבוע:
+`https://github.com/Lifeguardie/Logincru/releases/download/inventory-apk-latest/inventory.apk`
+
+מורידים לטלפון, מאשרים התקנה ממקור לא ידוע, פותחים — ובפעם הראשונה מזינים את
+**כתובת השרת** (למשל `https://inventory.example.com`). האפליקציה היא מעטפת:
+הנתונים יושבים בשרת, לא בטלפון. את הכתובת אפשר לשנות ממסך ההתחברות.
+
+ה-APK נבנה אוטומטית ב-GitHub Actions (`.github/workflows/android-apk.yml`) בכל
+push שנוגע ב-`inventory/`, או ידנית מלשונית Actions. הוא חתום בחתימת debug —
+מתאים להתקנה ישירה, לא ל-Play Store (שם נדרש keystore — שלב נפרד).
+
+לפני HTTPS: ה-manifest מאפשר זמנית `http://` (`usesCleartextTraffic`) כדי לבדוק
+מול `http://IP:4010`. **אחרי שיש דומיין עם תעודה — להסיר את זה** מ-
+`client/android/app/src/main/AndroidManifest.xml`.
+
+**ב. PWA** — פותחים את הכתובת בדפדפן הטלפון ובוחרים "הוסף למסך הבית".
+נפתח במסך מלא עם אייקון, ונטען גם בלי רשת — נתוני המלאי עצמם לעולם לא
+נשמרים במטמון, רק המעטפת.
 
 ### עבודה בלי קליטה
 
@@ -210,7 +227,9 @@ server/
   migrations/              SQL ממוספר, מורץ על ידי scripts/migrate.js
   tests/                   בדיקות יחידה על חישובי היחידות
 client/
-  src/lib/api.js           כל קריאה לשרת עוברת דרך כאן
+  android/                 פרויקט Android (Capacitor) - נבנה ב-GitHub Actions
+  capacitor.config.json    appId, שם האפליקציה
+  src/lib/api.js           כל קריאה לשרת עוברת דרך כאן, כולל כתובת השרת באפליקציה
   src/lib/queue.js         תור השמירה שעמיד לניתוקי רשת
   src/lib/image.js         הקטנת צילום בטלפון לפני העלאה
   src/components/OcrReview.jsx   מסך האישור של מה שזוהה בצילום

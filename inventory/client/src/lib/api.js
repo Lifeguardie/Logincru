@@ -5,6 +5,61 @@
 
 const TOKEN_KEY = 'inventory.token';
 const USER_KEY = 'inventory.user';
+const SERVER_KEY = 'inventory.serverUrl';
+
+/** האם רצים בתוך אפליקציית Android/iOS (Capacitor) ולא בדפדפן */
+export function isNative() {
+  return Boolean(window.Capacitor?.isNativePlatform?.());
+}
+
+/**
+ * כתובת השרת. בווב ריק = same-origin (השרת מגיש גם את הלקוח).
+ * באפליקציה הנייטיב אין "same origin" - הכתובת נשמרת פעם אחת בהגדרה.
+ */
+export function getServerUrl() {
+  try {
+    return (localStorage.getItem(SERVER_KEY) || '').replace(/\/+$/, '');
+  } catch (_) {
+    return '';
+  }
+}
+
+export function setServerUrl(url) {
+  try {
+    localStorage.setItem(SERVER_KEY, String(url || '').trim().replace(/\/+$/, ''));
+  } catch (_) { /* לא קריטי */ }
+}
+
+/** בודק שכתובת מובילה לשרת המלאי. לא שומר כלום */
+export async function checkServer(url) {
+  const base = String(url || '').trim().replace(/\/+$/, '');
+  if (!/^https?:\/\/.+/.test(base)) throw new Error('כתובת חייבת להתחיל ב-http:// או https://');
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+  try {
+    const response = await fetch(`${base}/api/health`, { signal: controller.signal });
+    if (!response.ok) throw new Error(`השרת ענה ${response.status}`);
+    const data = await response.json();
+    if (!data.ok) throw new Error('הכתובת לא מובילה לשרת המלאי');
+    return base;
+  } catch (err) {
+    if (err.name === 'AbortError') throw new Error('אין תגובה מהשרת (8 שניות). בדוק כתובת ורשת');
+    throw new Error(err.message === 'Failed to fetch' ? 'לא ניתן להתחבר. בדוק כתובת, פורט ורשת' : err.message);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** ניווט מלא. ב-WebView הנתיבים הם hash, בווב רגיל - path */
+export function hardNavigate(path) {
+  window.location.href = isNative() ? `#${path}` : path;
+}
+
+/** הנתיב הנוכחי, בלי תלות בסוג הראוטר */
+export function currentPath() {
+  return isNative() ? (window.location.hash.replace(/^#/, '') || '/') : window.location.pathname;
+}
 
 export function getToken() {
   try {
@@ -57,7 +112,7 @@ async function request(method, path, { body, formData, raw } = {}) {
 
   let response;
   try {
-    response = await fetch(`/api${path}`, {
+    response = await fetch(`${getServerUrl()}/api${path}`, {
       method,
       headers,
       body: formData || (body !== undefined ? JSON.stringify(body) : undefined),
@@ -70,7 +125,7 @@ async function request(method, path, { body, formData, raw } = {}) {
   if (response.status === 401) {
     clearSession();
     // רענון מלא מחזיר למסך ההתחברות בלי לנהל מצב גלובלי מסובך
-    if (!path.startsWith('/auth/login')) window.location.href = '/login';
+    if (!path.startsWith('/auth/login')) hardNavigate('/login');
     throw new ApiError(401, 'ההתחברות פגה');
   }
 
@@ -80,8 +135,8 @@ async function request(method, path, { body, formData, raw } = {}) {
 
     // השרת חוסם הכל עד להחלפת סיסמה - שולחים לשם
     if (response.status === 403 && payload.code === 'PASSWORD_CHANGE_REQUIRED'
-        && window.location.pathname !== '/password') {
-      window.location.href = '/password';
+        && currentPath() !== '/password') {
+      hardNavigate('/password');
     }
 
     throw new ApiError(response.status, payload.error || `שגיאה ${response.status}`, payload.details);

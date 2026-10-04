@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Navigate, useLocation } from 'react-router-dom';
+import { Link, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
+import { isNative, getServerUrl } from '../lib/api';
 
 export default function Login() {
   const { user, checking, login } = useAuth();
@@ -63,6 +64,12 @@ export default function Login() {
         <button type="submit" style={{ width: '100%' }} disabled={busy}>
           {busy ? 'מתחבר…' : 'כניסה'}
         </button>
+
+        {isNative() && (
+          <p className="muted center" style={{ marginTop: 14, marginBottom: 0 }}>
+            שרת: <span dir="ltr">{getServerUrl()}</span> · <Link to="/server">שינוי</Link>
+          </p>
+        )}
       </form>
     </div>
   );

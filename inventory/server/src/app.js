@@ -31,6 +31,28 @@ app.use((req, res, next) => {
   next();
 });
 
+/**
+ * CORS לאפליקציית Android/iOS בלבד.
+ * ב-WebView של Capacitor המקור הוא https://localhost (לא השרת), ולכן בלי
+ * הכותרות האלה הדפדפן המוטמע חוסם את הבקשות. מקורות אחרים לא מקבלים כלום -
+ * הווב הרגיל מוגש מאותו שרת ונשאר same-origin.
+ */
+const NATIVE_ORIGINS = new Set(['https://localhost', 'capacitor://localhost', 'http://localhost']);
+
+app.use((req, res, next) => {
+  const origin = req.get('origin');
+  if (origin && NATIVE_ORIGINS.has(origin)) {
+    res.set('Access-Control-Allow-Origin', origin);
+    res.set('Vary', 'Origin');
+    res.set('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+    res.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.set('Access-Control-Expose-Headers', 'Content-Disposition, Retry-After');
+    res.set('Access-Control-Max-Age', '600');
+    if (req.method === 'OPTIONS') return res.status(204).end();
+  }
+  return next();
+});
+
 app.use(express.json({ limit: '2mb' }));
 
 // לוג בקשות. סיסמאות לעולם לא נכנסות ללוג - רק method, path וסטטוס.
