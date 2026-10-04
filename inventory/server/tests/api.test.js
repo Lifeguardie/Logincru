@@ -249,6 +249,48 @@ test('עריכת פריט לא מערבבת את סדר הדף', async (t) => {
   assert.ok(await order());
 });
 
+test('סדר הדף: PUT /locations/:id/order קובע את סדר מסך הספירה', async (t) => {
+  if (skipIfNoDb(t)) return;
+
+  const location = (await call('POST', '/locations', { token: admin, body: { name: 'מדף סידור' } })).body.id;
+  const ids = [];
+  for (const name of ['א', 'ב', 'ג']) {
+    ids.push((await call('POST', '/items', {
+      token: admin, body: { name: `סידור ${name}`, baseUnit: 'unit', pricePerBaseUnit: 1, locationIds: [location] },
+    })).body.id);
+  }
+
+  const listed = await call('GET', `/locations/${location}/items`, { token: counter });
+  assert.equal(listed.status, 200);
+  assert.deepEqual(listed.body.items.map((i) => i.id), ids);
+
+  assert.equal((await call('PUT', `/locations/${location}/order`, { token: counter, body: { itemIds: ids } })).status, 403);
+  assert.equal((await call('PUT', `/locations/${location}/order`, { token: admin, body: { itemIds: [ids[0], 99999] } })).status, 400, 'פריט לא משויך');
+  assert.equal((await call('PUT', `/locations/${location}/order`, { token: admin, body: { itemIds: [ids[0], ids[0]] } })).status, 400, 'כפילות');
+
+  const reordered = await call('PUT', `/locations/${location}/order`, { token: admin, body: { itemIds: [ids[2], ids[0]] } });
+  assert.equal(reordered.status, 200);
+  assert.deepEqual(reordered.body.itemIds, [ids[2], ids[0], ids[1]], 'מה שלא נשלח נדחף לסוף בסדר המקורי');
+
+  const open = (await call('POST', '/counts', { token: admin, body: { name: 'סדר2', countDate: '2026-10-03' } })).body.id;
+  const sheet = await call('GET', `/counts/${open}/sheet?locationId=${location}`, { token: admin });
+  assert.deepEqual(sheet.body.items.map((i) => i.id), [ids[2], ids[0], ids[1]], 'מסך הספירה עוקב אחרי הסדר');
+  await call('DELETE', `/counts/${open}`, { token: admin });
+});
+
+test('יחידת ברירת מחדל: אחת בלבד לפריט', async (t) => {
+  if (skipIfNoDb(t)) return;
+
+  const created = (await call('POST', '/items', {
+    token: admin, body: { name: 'פריט ברירת מחדל', baseUnit: 'kg', pricePerBaseUnit: 10, locationIds: [] },
+  })).body.id;
+  const box = (await call('POST', `/items/${created}/units`, { token: admin, body: { unitName: 'ארגז', factorToBase: 5, isDefault: true } })).body;
+
+  const item = (await call('GET', `/items/${created}`, { token: admin })).body;
+  assert.equal(item.units.filter((u) => u.isDefault).length, 1);
+  assert.equal(item.units.find((u) => u.isDefault).id, box.id, 'הארגז הפך לברירת מחדל והבסיס התנקה');
+});
+
 test('פריט מושבת: נעלם מהרשימה, חוזר עם includeInactive=true, ו-"false" הוא באמת false', async (t) => {
   if (skipIfNoDb(t)) return;
 

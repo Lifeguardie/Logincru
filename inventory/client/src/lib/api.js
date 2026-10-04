@@ -130,10 +130,14 @@ export const api = {
   updateUser: (id, body) => put(`/users/${id}`, body),
   resetUserPassword: (id, newPassword) => post(`/users/${id}/reset-password`, { newPassword }),
 
-  listCategories: () => get('/categories'),
+  listCategories: (params) => get(`/categories${qs(params)}`),
   createCategory: (body) => post('/categories', body),
-  listLocations: () => get('/locations'),
+  updateCategory: (id, body) => put(`/categories/${id}`, body),
+  listLocations: (params) => get(`/locations${qs(params)}`),
   createLocation: (body) => post('/locations', body),
+  updateLocation: (id, body) => put(`/locations/${id}`, body),
+  getLocationItems: (id) => get(`/locations/${id}/items`),
+  saveLocationOrder: (id, itemIds) => put(`/locations/${id}/order`, { itemIds }),
 
   listItems: (params) => get(`/items${qs(params)}`),
   getItem: (id) => get(`/items/${id}`),

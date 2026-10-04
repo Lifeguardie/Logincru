@@ -13,6 +13,8 @@ import Purchases from './pages/Purchases';
 import Reports from './pages/Reports';
 import ChangePassword from './pages/ChangePassword';
 import Users from './pages/Users';
+import Settings from './pages/Settings';
+import SheetOrder from './pages/SheetOrder';
 
 /** חוסם מסכים למי שלא מחובר, ומסכי ניהול למי שאין לו תפקיד מתאים */
 function Protected({ children, minimumRole }) {
@@ -52,6 +54,7 @@ function Shell({ children }) {
         <NavLink to="/items">פריטים</NavLink>
         {can('manager') && <NavLink to="/purchases">רכש</NavLink>}
         {can('manager') && <NavLink to="/reports">דוחות</NavLink>}
+        {can('manager') && <NavLink to="/settings">הגדרות</NavLink>}
         {can('admin') && <NavLink to="/users">משתמשים</NavLink>}
       </nav>
 
@@ -80,6 +83,8 @@ export default function App() {
               <Route path="/purchases" element={<Protected minimumRole="manager"><Purchases /></Protected>} />
               <Route path="/reports" element={<Protected minimumRole="manager"><Reports /></Protected>} />
               <Route path="/password" element={<ChangePassword />} />
+              <Route path="/settings" element={<Protected minimumRole="manager"><Settings /></Protected>} />
+              <Route path="/settings/locations/:locationId/order" element={<Protected minimumRole="manager"><SheetOrder /></Protected>} />
               <Route path="/users" element={<Protected minimumRole="admin"><Users /></Protected>} />
               <Route path="*" element={<div className="empty">הדף לא נמצא</div>} />
             </Routes>

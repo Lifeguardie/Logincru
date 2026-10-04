@@ -246,9 +246,19 @@ router.put('/:id', requireRole('manager'), asyncRoute(async (req, res) => {
 
 /* ---------- יחידות ספירה ---------- */
 
+/** יחידת ברירת מחדל אחת לפריט - כשמסמנים אחת, השאר מתנקות */
+async function clearOtherDefaults(itemId, keepUnitId) {
+  await db.query(
+    'UPDATE item_units SET is_default = 0 WHERE item_id = ? AND id <> ?',
+    [itemId, keepUnitId ?? 0]
+  );
+}
+
 router.post('/:id/units', requireRole('manager'), asyncRoute(async (req, res) => {
   const itemId = z.coerce.number().int().positive().parse(req.params.id);
   const body = unitSchema.parse(req.body);
+
+  if (body.isDefault) await clearOtherDefaults(itemId, null);
 
   const result = await db.query(
     `INSERT INTO item_units (item_id, unit_name, factor_to_base, tare_weight, is_default, sort_order)
@@ -264,6 +274,8 @@ router.put('/:id/units/:unitId', requireRole('manager'), asyncRoute(async (req, 
   const itemId = z.coerce.number().int().positive().parse(req.params.id);
   const unitId = z.coerce.number().int().positive().parse(req.params.unitId);
   const body = unitSchema.parse(req.body);
+
+  if (body.isDefault) await clearOtherDefaults(itemId, unitId);
 
   const result = await db.query(
     `UPDATE item_units

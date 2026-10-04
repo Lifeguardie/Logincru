@@ -35,6 +35,7 @@ export default function ItemEditor() {
   const [message, setMessage] = useState('');
 
   const [newUnit, setNewUnit] = useState({ unitName: '', factorToBase: '', tareWeight: '' });
+  const [editingUnit, setEditingUnit] = useState(null);
 
   useEffect(() => {
     Promise.all([api.listCategories(), api.listLocations()])
@@ -106,6 +107,25 @@ export default function ItemEditor() {
         sortOrder: units.length,
       });
       setNewUnit({ unitName: '', factorToBase: '', tareWeight: '' });
+      setUnits((await api.getItem(itemId)).units);
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  /** שמירת עריכה של יחידה קיימת, או סימון כברירת מחדל */
+  async function saveUnit(unit, patch) {
+    setError('');
+    try {
+      await api.updateItemUnit(itemId, unit.id, {
+        unitName: unit.unitName,
+        factorToBase: Number(unit.factorToBase),
+        tareWeight: unit.tareWeight === '' || unit.tareWeight === null ? null : Number(unit.tareWeight),
+        isDefault: unit.isDefault,
+        sortOrder: unit.sortOrder,
+        ...patch,
+      });
+      setEditingUnit(null);
       setUnits((await api.getItem(itemId)).units);
     } catch (err) {
       setError(err.message);
@@ -237,20 +257,47 @@ export default function ItemEditor() {
                 </tr>
               </thead>
               <tbody>
-                {units.map((unit) => (
-                  <tr key={unit.id}>
-                    <td>{unit.unitName}</td>
-                    <td className="num">{quantity(unit.factorToBase)}</td>
-                    <td className="num">
-                      {quantity(unit.factorToBase)} {baseUnitLabel(item.baseUnit)}
-                      <span className="muted"> = {money(unit.factorToBase * price)}</span>
-                    </td>
-                    <td className="num">{unit.tareWeight ? quantity(unit.tareWeight) : '—'}</td>
-                    <td>
-                      <button className="ghost small" onClick={() => removeUnit(unit.id)}>מחיקה</button>
-                    </td>
-                  </tr>
-                ))}
+                {units.map((unit) => {
+                  const editing = editingUnit && editingUnit.id === unit.id;
+                  if (editing) {
+                    return (
+                      <tr key={unit.id}>
+                        <td><input value={editingUnit.unitName} style={{ minWidth: 90 }}
+                          onChange={(e) => setEditingUnit({ ...editingUnit, unitName: e.target.value })} /></td>
+                        <td className="num"><input type="number" step="any" min="0.0001" value={editingUnit.factorToBase} style={{ width: 90 }}
+                          onChange={(e) => setEditingUnit({ ...editingUnit, factorToBase: e.target.value })} /></td>
+                        <td className="num muted">{quantity(Number(editingUnit.factorToBase) || 0)} {baseUnitLabel(item.baseUnit)}</td>
+                        <td className="num"><input type="number" step="any" min="0" value={editingUnit.tareWeight ?? ''} placeholder="—" style={{ width: 80 }}
+                          onChange={(e) => setEditingUnit({ ...editingUnit, tareWeight: e.target.value })} /></td>
+                        <td className="row" style={{ gap: 4 }}>
+                          <button className="small" onClick={() => saveUnit(editingUnit)}>שמירה</button>
+                          <button className="ghost small" onClick={() => setEditingUnit(null)}>ביטול</button>
+                        </td>
+                      </tr>
+                    );
+                  }
+                  return (
+                    <tr key={unit.id}>
+                      <td>
+                        {unit.unitName}
+                        {unit.isDefault && <span className="badge open" style={{ marginRight: 6 }}>ברירת מחדל</span>}
+                      </td>
+                      <td className="num">{quantity(unit.factorToBase)}</td>
+                      <td className="num">
+                        {quantity(unit.factorToBase)} {baseUnitLabel(item.baseUnit)}
+                        <span className="muted"> = {money(unit.factorToBase * price)}</span>
+                      </td>
+                      <td className="num">{unit.tareWeight ? quantity(unit.tareWeight) : '—'}</td>
+                      <td className="row" style={{ gap: 4, flexWrap: 'nowrap' }}>
+                        <button className="ghost small" onClick={() => setEditingUnit({ ...unit, tareWeight: unit.tareWeight ?? '' })}>עריכה</button>
+                        {!unit.isDefault && (
+                          <button className="ghost small" onClick={() => saveUnit(unit, { isDefault: true })}>ברירת מחדל</button>
+                        )}
+                        <button className="ghost small" onClick={() => removeUnit(unit.id)}>מחיקה</button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

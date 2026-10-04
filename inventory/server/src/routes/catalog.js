@@ -6,6 +6,8 @@ const express = require('express');
 const { z } = require('zod');
 
 const db = require('../db');
+const logger = require('../logger');
+const { loadLocationItems } = require('../services/sheet');
 const { asyncRoute, HttpError } = require('../middleware/errorHandler');
 const { requireAuth, requireRole } = require('../middleware/auth');
 
@@ -57,6 +59,59 @@ function simpleCrud(table) {
 
   return sub;
 }
+
+/* ---------- סדר הדף של אזור ---------- */
+
+/** הפריטים של האזור בסדר שבו הם מופיעים בדף הספירה */
+router.get('/locations/:id/items', requireAuth, asyncRoute(async (req, res) => {
+  const locationId = z.coerce.number().int().positive().parse(req.params.id);
+  const location = await db.queryOne('SELECT id, name FROM locations WHERE id = ?', [locationId]);
+  if (!location) throw new HttpError(404, 'האזור לא נמצא');
+
+  res.json({ location, items: await loadLocationItems(locationId) });
+}));
+
+const orderSchema = z.object({
+  itemIds: z.array(z.coerce.number().int().positive()).min(1).max(1000),
+});
+
+/**
+ * קובע את סדר הפריטים בדף של אזור. זה מה שהופך את מסך הספירה ל"דף הנייר".
+ * פריטים שלא נשלחו שומרים את סדרם היחסי ונדחפים אחרי אלה שנשלחו.
+ */
+router.put('/locations/:id/order', requireAuth, requireRole('manager'), asyncRoute(async (req, res) => {
+  const locationId = z.coerce.number().int().positive().parse(req.params.id);
+  const { itemIds } = orderSchema.parse(req.body);
+
+  if (new Set(itemIds).size !== itemIds.length) {
+    throw new HttpError(400, 'פריט מופיע פעמיים ברשימה');
+  }
+
+  const rows = await db.query(
+    'SELECT item_id AS itemId FROM item_locations WHERE location_id = ? ORDER BY sort_order, item_id',
+    [locationId]
+  );
+  const assigned = new Set(rows.map((row) => row.itemId));
+
+  for (const itemId of itemIds) {
+    if (!assigned.has(itemId)) throw new HttpError(400, `פריט ${itemId} לא משויך לאזור הזה`);
+  }
+
+  const sent = new Set(itemIds);
+  const finalOrder = [...itemIds, ...rows.map((row) => row.itemId).filter((id) => !sent.has(id))];
+
+  await db.transaction(async (conn) => {
+    for (const [index, itemId] of finalOrder.entries()) {
+      await conn.execute(
+        'UPDATE item_locations SET sort_order = ? WHERE item_id = ? AND location_id = ?',
+        [index, itemId, locationId]
+      );
+    }
+  });
+
+  logger.info('סדר הדף עודכן', { locationId, items: finalOrder.length, by: req.user.username });
+  res.json({ locationId, itemIds: finalOrder });
+}));
 
 // שמות הטבלאות קבועים בקוד ולא מגיעים מקלט משתמש
 router.use('/categories', requireAuth, simpleCrud('categories'));
