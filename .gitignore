@@ -6,3 +6,7 @@ db/*.sqlite-wal
 db/*.sqlite-shm
 logs/
 *.log
+
+# day-trader-skill working files (may hold your SEC user agent, account sizes)
+trader/
+__pycache__/
